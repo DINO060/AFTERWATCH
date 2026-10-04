@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import ts from 'typescript';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const ts=require(process.env.AFTERWATCH_TYPESCRIPT_PATH||'typescript');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'afterwatch-test-'));
 try{
  for(const name of ['catalog','catalog-gateway']){

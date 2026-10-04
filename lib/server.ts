@@ -1,14 +1,7 @@
-import {env} from "cloudflare:workers";
+import type {SupabaseClient} from "@supabase/supabase-js";
 import {z} from "zod";
-import {defaults} from "./watch";
-export function db(){if(!env.DB)throw new Error("Database unavailable");return env.DB;}
-export function userId(request:Request){
- const id=request.headers.get("oai-authenticated-user-id");
- if(id)return id;
- if(process.env.NODE_ENV==="development")return "local-preview";
- throw new Response(JSON.stringify({error:"Connecte-toi pour retrouver ta collection."}),{status:401,headers:{"Content-Type":"application/json"}});
-}
-export function sameOrigin(request:Request){const origin=request.headers.get("origin");if(origin&&origin!==new URL(request.url).origin)throw new Response("Forbidden",{status:403});}
+import {defaults,type WatchState} from "./watch";
+export {assertSameOrigin as sameOrigin} from "./auth-origin";
 const imageUrl=z.string().max(2000).refine(s=>!s||/^https:\/\/(media\.kitsu\.app|media\.kitsu\.io|cdn\.myanimelist\.net|static\.tvmaze\.com|images\.metahub\.space|m\.media-amazon\.com|image\.tmdb\.org)\//.test(s));
 const sourceUrl=z.string().max(2000).refine(s=>!s||/^https:\/\/(kitsu\.app|kitsu\.io|myanimelist\.net|www\.tvmaze\.com|www\.imdb\.com)\//.test(s));
 const mediaSchema=z.object({id:z.string().uuid(),title:z.string().trim().min(1).max(180),kind:z.enum(["anime","manga","series","film"]),priority:z.boolean(),status:z.enum(["watching","later","paused","completed"]),progress:z.number().int().min(0).max(100000),total:z.number().int().min(0).max(100000),duration:z.number().int().min(1).max(600),poster:imageUrl,sourceUrl,notes:z.string().max(2000),catalog:z.object({source:z.enum(['jikan','kitsu','cinemeta','tvmaze']),id:z.string().max(50),synopsis:z.string().max(12000),genres:z.array(z.string().max(100)).max(20),year:z.string().max(40),score:z.number().min(0).max(10).nullable(),episodes:z.number().int().min(0).max(100000).nullable(),chapters:z.number().int().min(0).max(100000).nullable(),volumes:z.number().int().min(0).max(100000).nullable(),seasons:z.number().int().min(0).max(10000).nullable(),available:z.number().int().min(0).max(100000).nullable(),releaseStatus:z.string().max(100),format:z.string().max(100),durationKnown:z.boolean()}).optional()}).refine(m=>m.total===0||m.progress<=m.total,{message:"La progression dépasse le total."});
@@ -18,6 +11,22 @@ export const stateSchema=z.object({media:z.array(mediaSchema).max(1000),sessions
  if(new Set(s.media.map(m=>m.id)).size!==s.media.length||new Set(s.sessions.map(m=>m.id)).size!==s.sessions.length)ctx.addIssue({code:"custom",message:"Identifiant en double."});
  for(const session of s.sessions){const m=s.media.find(x=>x.id===session.mediaId);if(!m||(m.total>0&&session.to>m.total))ctx.addIssue({code:"custom",message:"Séance incohérente avec le titre."});}
 });
-export async function readState(id:string){const row=await db().prepare("SELECT data, revision FROM watch_states WHERE user_id = ?").bind(id).first<{data:string;revision:number}>();return row?{state:JSON.parse(row.data),revision:row.revision}:{state:defaults,revision:0};}
-export function errorResponse(e:unknown){if(e instanceof Response)return e;if(e instanceof z.ZodError)return Response.json({error:e.issues[0]?.message||"Informations invalides."},{status:400});console.error("Afterwatch operation failed",e instanceof Error?e.message:"unknown");return Response.json({error:"Impossible de sauvegarder pour le moment. Tes modifications restent affichées ; réessaie."},{status:503});}
-export const aiEnv=()=>env as unknown as {GEMINI_API_KEY?:string};
+export async function readState(supabase:SupabaseClient,id:string):Promise<{state:WatchState;revision:number}>{
+ const {data,error}=await supabase.from("watch_states").select("data,revision").eq("user_id",id).maybeSingle();
+ if(error)throw new Error("Collection read failed");
+ return data?{state:stateSchema.parse(data.data),revision:data.revision}:{state:defaults,revision:0};
+}
+export async function saveState(supabase:SupabaseClient,state:WatchState,revision:number):Promise<number|null>{
+ const {data,error}=await supabase.rpc("save_watch_state",{p_state:state,p_revision:revision});
+ if(error)throw new Error("Collection save failed");
+ return data;
+}
+export function errorResponse(e:unknown){
+ const headers={"Cache-Control":"private, no-store"};
+ if(e instanceof Response){e.headers.set("Cache-Control","private, no-store");return e;}
+ if(e instanceof z.ZodError)return Response.json({error:e.issues[0]?.message||"Informations invalides."},{status:400,headers});
+ if(e instanceof SyntaxError)return Response.json({error:"Informations invalides."},{status:400,headers});
+ console.error("Afterwatch operation failed",e instanceof Error?e.message:"unknown");
+ return Response.json({error:"Impossible de sauvegarder pour le moment. Tes modifications restent affichées ; réessaie."},{status:503,headers});
+}
+export const aiEnv=()=>({GEMINI_API_KEY:process.env.GEMINI_API_KEY});

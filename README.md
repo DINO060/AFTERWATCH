@@ -3,79 +3,107 @@
 **Founder:** John Diverson  
 **Co-founder:** Astra
 
-Application personnelle en français pour suivre anime, mangas, films et séries.
+Application en français pour organiser anime, mangas, films et séries : catalogue,
+collection privée, progression, priorités et planning hebdomadaire.
 
-## Utilisation
-
-1. Ouvrir le Catalogue : anime/mangas avec Kitsu et Jikan en secours, séries avec TVmaze, films avec Cinemeta. Parcourir les couvertures et pages de résultats ou rechercher un titre.
-2. Cliquer sur une couverture pour lire le synopsis, les genres, la durée, les épisodes/chapitres/tomes et les saisons disponibles. Ajouter à la liste en un clic ; les informations et la couverture sont conservées. Les anciennes collections restent compatibles.
-3. L’ajout manuel reste disponible pour un titre absent des catalogues.
-2. Indiquer la progression, le total disponible, la durée, le statut et la priorité.
-3. Régler les jours et la durée quotidienne. Le planning automatique propose sept jours et attend confirmation.
-4. Marquer une séance terminée pour mettre à jour la progression. Les séances peuvent être déplacées ou retirées.
-5. Dans Assistant Gemini, fournir une clé Google AI Studio d’un projet au palier gratuit sans facturation. La clé saisie est conservée seulement en mémoire de l’écran, pas en base ou dans le dépôt. Changer d’écran la supprime.
-
-Les rappels sont délivrés tant que l’application reste ouverte. Aucun push en arrière-plan n’est configuré. Les réponses Gemini sont des suggestions et ne modifient pas les données. Gemini n’interroge pas les sorties en direct. Les compteurs d’épisodes disponibles sont à vérifier par l’utilisateur.
-
-## Architecture
-
-React / TypeScript, Vinext, Cloudflare Workers, D1. Les données sont stockées par utilisateur authentifié avec contrôle de version optimiste. Une version périmée est refusée au lieu d’écraser une modification d’un autre appareil. Authentification fournie par la plateforme Sites (en-têtes vérifiés par le dispatcher) ; ne jamais accepter ces en-têtes depuis Internet sans cette frontière de confiance.
-
-L’API `/api/assistant` contacte exclusivement Gemini 2.5 Flash par HTTPS avec la clé dans l’en-tête `x-goog-api-key`. Aucun appel IA automatique, aucun mécanisme de passage vers une offre payante. L’application ne peut pas inspecter la facturation du projet Google ; l’utilisateur doit choisir un projet sans facturation pour garantir le palier gratuit.
+La migration vise **Next.js sur Vercel** et **Supabase Auth / PostgreSQL**.
+Le catalogue est accessible sans compte. Un compte est nécessaire pour enregistrer
+une collection, un planning ou utiliser Gemini.
 
 ## Développement
 
-```sh
-pnpm install --frozen-lockfile
-pnpm dev
-pnpm exec tsc --noEmit
-node tests/catalog.mjs
-pnpm run db:generate
-pnpm build
-```
-
-La base locale doit recevoir la migration `drizzle/0000_purple_goliath.sql` après génération de la configuration Worker. La variable optionnelle `GEMINI_API_KEY` peut être configurée comme secret serveur ; `.env.example` ne contient aucune valeur réelle. Ne jamais committer `.env`, une clé ou les données runtime.
-
-## GitHub et hébergement
-
-Dépôt : https://github.com/DINO060/AFTERWATCH
-
-Pour reprendre dans VS Code : clone ce dépôt, ouvre le dossier et lis [CODEX_HANDOFF.md](CODEX_HANDOFF.md).
-
-Le code peut être placé dans un dépôt GitHub privé. GitHub Pages seul ne peut pas exécuter ce backend ni D1 : la version construite est déployée sur Sites. Une migration vers un autre hébergeur exige d’adapter le stockage et l’authentification ; ne pas publier tel quel en supprimant les protections.
-
-Après extraction du ZIP, crée un dépôt GitHub privé vide, puis, depuis ce dossier :
+Node >= 22.13.0 et npm 10 sont requis.
 
 ```sh
-git init
-git add .
-git commit -m "Initial Afterwatch source"
-git remote add github https://github.com/VOTRE_COMPTE/afterwatch.git
-git push github HEAD:main
+npm install
+# Copier .env.example vers .env.local et renseigner les valeurs publiques Supabase.
+npm run dev
+npm run typecheck
+npm test
+npm run build
 ```
 
-Les services de métadonnées sont externes et peuvent être temporairement indisponibles ou limiter les appels. Aucune exhaustivité mondiale n’est garantie. Les chiffres absents restent inconnus et les synopsis gardent la langue fournie par la source.
+L'installation génère `package-lock.json`. Le vérifier et le committer avant la
+publication ; les anciennes dépendances et le verrou pnpm de Sites ont été retirés.
+Le build de cette migration reste à vérifier après installation des dépendances.
+Sans configuration Supabase, le catalogue reste utilisable et la connexion est
+désactivée. Aucun utilisateur de développement partagé ne remplace une vraie session.
 
-Le catalogue appelle d’abord les API depuis le serveur avec un délai borné. En cas de panne réseau, le navigateur peut joindre directement leurs endpoints publics CORS ; seul le terme de recherche est envoyé, jamais la collection ni la clé Gemini. Les routes catalogue ne lisent aucune donnée personnelle et restent derrière l’accès privé du site. Les routes de collection et Gemini exigent toujours une identité connectée.
+## Connexion et données
 
-Les sources contiennent une illustration originale générée pour Afterwatch. Les affiches importées restent attribuées aux catalogues : Kitsu, Jikan / MyAnimeList, TVmaze (CC BY-SA), et Cinemeta / IMDb. Aucun contenu vidéo ou manga n’est hébergé.
+- Connexion par lien envoyé à l'adresse e-mail, sans mot de passe.
+- Connexion Telegram optionnelle via un fournisseur OIDC personnalisé Supabase.
+- Dans « Mon compte », un membre connecté par e-mail peut lier Telegram à son
+  compte existant. Se connecter séparément avec Telegram peut créer un autre compte.
+- Chaque collection est liée à l'identifiant vérifié du compte Supabase.
+- La table est protégée par RLS. Les écritures passent par une fonction atomique
+  qui refuse une version périmée ; l'API vérifie aussi le compte attendu par l'écran.
+- Les sessions et les réponses de collection ne sont pas mises en cache.
 
-## Installer sur téléphone ou ordinateur
+L'utilisateur a confirmé avoir créé le projet Supabase. Sa Project URL et sa
+Publishable key restent à fournir ; l'exécution de la migration SQL n'a pas encore
+été confirmée. La création du projet Vercel et la configuration des e-mails et de
+Telegram restent à confirmer. Le parcours utilise les tableaux de bord web,
+sans installation de plugin Supabase. Les étapes sont dans
+[DEPLOYMENT.md](DEPLOYMENT.md) ; l'état de reprise est dans
+[CODEX_HANDOFF.md](CODEX_HANDOFF.md).
 
-Le bouton « Installer l’app » utilise le mécanisme PWA du navigateur. Chrome/Edge peuvent proposer une installation ; Safari sur iPhone propose Partager → Sur l’écran d’accueil. Le manifeste, les icônes et un écran hors connexion sont inclus. Internet reste nécessaire pour la collection, le catalogue et Gemini. Le service worker ne met pas en cache les pages privées ni les réponses API. Ce projet ne génère pas d’APK ou d’installateur Windows.
+## Fonctionnalités
 
-## Nom de domaine
+Le catalogue utilise Kitsu, Jikan en secours, TVmaze et Cinemeta. Les fiches
+conservent synopsis, genres et compteurs disponibles ; les nombres et dates absents
+restent inconnus. L'ajout manuel reste disponible.
 
-L’achat d’un domaine fournit une adresse, pas un serveur. La version actuelle peut recevoir un domaine personnalisé via Sites. Il faut d’abord enregistrer le nom exact sur l’hébergement, puis recopier les enregistrements DNS de validation et de routage fournis par celui-ci chez le registrar. Ne pas deviner les cibles DNS ni supprimer les enregistrements e-mail.
+Le planning automatique respecte les priorités, les jours disponibles et le budget
+quotidien. Il attend confirmation avant d'ajouter les séances. Terminer une séance
+met à jour la progression.
 
-## Vérification réalisée
+Gemini 2.5 Flash répond uniquement sur demande. Chaque utilisateur peut fournir sa
+clé Google AI Studio d'un projet sans facturation. Cette clé reste en mémoire dans
+l'écran, n'est pas enregistrée dans la collection et disparaît en quittant l'écran.
+Le serveur contacte exclusivement l'API Gemini par HTTPS. Aucun appel OpenAI ni
+basculement automatique vers une offre payante n'est ajouté.
 
-Compilation TypeScript et build Worker. Tests de régression catalogue : normalisation des métadonnées, valeurs inconnues, repli entre sources, pagination, annulation et validation des références. Tests du planificateur : ordre des priorités, budget quotidien, jours disponibles, absence de doublons, progression, total inconnu et fin avant minuit. L’appel Gemini réel nécessite une clé de l’utilisateur. Aucun test navigateur automatisé disponible dans cet environnement.
+`GEMINI_API_KEY` est facultative. Sur un site public, la laisser vide permet à
+chaque utilisateur d'utiliser son propre quota. L'application ne peut pas vérifier
+la facturation d'un projet Google. Gemini conseille sans modifier les données et
+ne vérifie pas les sorties en direct.
 
-## Contenu de l’archive source
+Les rappels nécessitent une application ouverte. Lier Telegram n'active pas encore
+de rappels dans Telegram : un bot et un ordonnanceur restent à développer.
 
-Le ZIP contient le code React/TypeScript, les routes serveur, les migrations D1, les composants, les ressources, les tests et le fichier de dépendances verrouillées. Il ne contient ni clés API, ni collection personnelle, ni dépendances installées. Le code est librement modifiable ; les affiches externes restent la propriété de leurs ayants droit. Pour redéployer hors de Sites, adapter impérativement l’authentification `lib/server.ts` et le binding D1. Les en-têtes `oai-authenticated-user-*` ne sont fiables que derrière le dispatcher Sites.
+La PWA dispose d'un manifeste et d'un écran hors connexion. Internet reste requis
+pour les données, le catalogue et Gemini. Le service worker ne conserve aucune
+page privée ni réponse API. Aucun APK ou installateur Windows n'est généré.
 
-## License
+## Fichiers principaux
 
-Original Afterwatch code is licensed under the MIT License. See [LICENSE.md](LICENSE.md). Third-party dependencies retain their respective licenses. External covers, catalog metadata and other third-party material are not relicensed by this file. Project credits are listed in [AUTHORS.md](AUTHORS.md).
+- `app/watch-app.tsx` : application, accès invité et collection.
+- `app/auth-panel.tsx`, `lib/auth.ts`, `lib/supabase/`, `proxy.ts` : comptes et sessions.
+- `app/auth/callback/route.ts` : retour des liens e-mail et du flux OAuth.
+- `app/catalog-browser.tsx`, `lib/catalog-*` : catalogue et fiches.
+- `lib/watch.ts` : données et planificateur.
+- `lib/server.ts`, `app/api/state/route.ts` : validation et sauvegarde.
+- `supabase/migrations/` : schéma PostgreSQL, RLS et contrôle de version.
+- `supabase/tests/` : tests SQL d'isolation et de conflits de version.
+- `app/api/assistant/route.ts` : Gemini.
+- `vercel.json` : configuration du déploiement Next.js.
+
+Le fichier `.openai/hosting.json` identifie l'ancien hébergement Sites. Le nouveau
+runtime n'en dépend pas. Aucun déploiement Vercel n'est effectué par ce fichier.
+
+## Vérification de la migration
+
+Les tests du catalogue et les tests des redirections, origines et paramètres de
+connexion ont été exécutés. L'installation des dépendances n'a pas été autorisée
+dans cette session : le build, le contrôle complet des types, les tests SQL sur une
+base réelle et les parcours e-mail/Telegram restent à exécuter avant publication.
+L'ancien site déployé n'a pas été remplacé.
+
+## Licence et sources
+
+Code original sous [licence MIT](LICENSE.md). Crédits dans [AUTHORS.md](AUTHORS.md).
+L'illustration Afterwatch est originale. Les affiches et métadonnées externes restent
+attribuées à Kitsu, Jikan / MyAnimeList, TVmaze (CC BY-SA), Cinemeta / IMDb et leurs
+ayants droit. Aucun contenu vidéo ou manga n'est hébergé. Les services externes
+peuvent être indisponibles ou limiter les appels.

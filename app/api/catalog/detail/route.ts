@@ -1,4 +1,4 @@
-// Public metadata only; the private Site access boundary still applies.
+// Public metadata only; no collection or authentication data is returned.
 import {catalogDetail,CatalogFailure} from '@/lib/catalog-server';
 import type {Kind} from '@/lib/watch';
 export async function GET(request:Request){try{
