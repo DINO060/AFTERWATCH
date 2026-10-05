@@ -76,8 +76,20 @@ export function AuthPanel({ user, configured, telegramEnabled, googleEnabled, on
       });
       if (authError) throw authError;
       setMessage('Vérifie ta boîte mail et les indésirables. Ouvre le lien dans ce navigateur pour te connecter, sans mot de passe.');
-    } catch {
-      setError('Impossible d’envoyer le lien. Vérifie ton adresse, puis réessaie dans une minute.');
+    } catch (cause) {
+      const { code, status } = (cause ?? {}) as { code?: string; status?: number };
+      console.warn('Afterwatch e-mail sign-in failed', code || status || 'unknown');
+      if (status === 429 || code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit') {
+        setError('Trop de demandes de lien. Attends quelques minutes avant de réessayer.');
+      } else if (code === 'email_address_invalid' || code === 'validation_failed') {
+        setError('Cette adresse e-mail n’est pas valide. Vérifie-la puis réessaie.');
+      } else if (code === 'email_address_not_authorized') {
+        setError('La connexion par e-mail n’est pas encore ouverte à toutes les adresses. Utilise Google ou réessaie plus tard.');
+      } else if (code === 'signup_disabled') {
+        setError('Les inscriptions sont fermées pour le moment.');
+      } else {
+        setError('Impossible d’envoyer le lien. Vérifie ton adresse, puis réessaie dans une minute.');
+      }
     } finally {
       setBusy(null);
     }
