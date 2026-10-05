@@ -1,8 +1,33 @@
 // Public metadata only; no collection or authentication data is returned.
-import {browseCatalog,CatalogFailure} from '@/lib/catalog-server';
-import type {Kind} from '@/lib/watch';
-export async function GET(request:Request){try{
- const p=new URL(request.url).searchParams;const q=p.get('q')?.trim()||'';const kind=p.get('kind')||'anime';const page=Number(p.get('page')||1);
- if(!['anime','manga','series','film'].includes(kind)||q.length>150||!Number.isInteger(page)||page<1||page>10000)return Response.json({error:'Recherche invalide.'},{status:400});
- return Response.json(await browseCatalog(kind as Kind,q,page),{headers:{'Cache-Control':'private, max-age=120'}});
-}catch(e){if(e instanceof Response)return e;return Response.json({error:e instanceof CatalogFailure?e.message:'Le catalogue est temporairement indisponible. Réessaie dans un instant.'},{status:e instanceof CatalogFailure?e.status:503})}}
+import { browseCatalog, CatalogFailure } from '@/lib/catalog-server';
+import type { Kind } from '@/lib/watch';
+export async function GET(request: Request) {
+  try {
+    const p = new URL(request.url).searchParams;
+    const q = p.get('q')?.trim() || '';
+    const kind = p.get('kind') || 'anime';
+    const page = Number(p.get('page') || 1);
+    if (
+      !['anime', 'manga', 'series', 'film'].includes(kind) ||
+      q.length > 150 ||
+      !Number.isInteger(page) ||
+      page < 1 ||
+      page > 10000
+    )
+      return Response.json({ error: 'Recherche invalide.' }, { status: 400 });
+    return Response.json(await browseCatalog(kind as Kind, q, page), {
+      headers: { 'Cache-Control': 'private, max-age=120' },
+    });
+  } catch (e) {
+    if (e instanceof Response) return e;
+    return Response.json(
+      {
+        error:
+          e instanceof CatalogFailure
+            ? e.message
+            : 'Le catalogue est temporairement indisponible. Réessaie dans un instant.',
+      },
+      { status: e instanceof CatalogFailure ? e.status : 503 },
+    );
+  }
+}

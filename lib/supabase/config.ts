@@ -17,6 +17,7 @@ export function getSupabaseConfig(): SupabaseConfig | null {
 
 export function getTelegramProvider(): `custom:${string}` | null {
   const provider = process.env.NEXT_PUBLIC_TELEGRAM_AUTH_PROVIDER?.trim();
-  if (!provider?.startsWith('custom:') || !/^custom:[a-z0-9:-]+$/.test(provider) || provider.length > 50) return null;
+  if (!provider?.startsWith('custom:') || !/^custom:[a-z0-9:-]+$/.test(provider) || provider.length > 50)
+    return null;
   return provider as `custom:${string}`;
 }

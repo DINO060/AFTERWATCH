@@ -1,107 +1,2211 @@
-"use client";
-import {useState,useEffect,useRef,useCallback} from "react";
-import {Play,Plus,CalendarDays,Layers3,Sparkles,Bell,Moon,LockKeyhole,Clock3,Flame,BookOpen,Search,Check,MoreHorizontal,Trash2,Pencil,ChevronLeft,ChevronRight,Settings2,Send,KeyRound,LoaderCircle,RefreshCw,CheckCheck,Film,CalendarPlus,X,WifiOff,Compass,Info} from "lucide-react";
-import {Sidebar,SidebarProvider,SidebarContent,SidebarHeader,SidebarMenu,SidebarMenuItem,SidebarMenuButton,SidebarFooter,SidebarTrigger,useSidebar} from "@/components/ui/sidebar";
-import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from "@/components/ui/dialog";
-import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from "@/components/ui/alert-dialog";
-import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@/components/ui/select";
-import {Tabs,TabsList,TabsTrigger,TabsContent} from "@/components/ui/tabs";
-import {Switch} from "@/components/ui/switch";
-import {Checkbox} from "@/components/ui/checkbox";
-import {Progress} from "@/components/ui/progress";
-import {Skeleton} from "@/components/ui/skeleton";
-import {Empty,EmptyHeader,EmptyTitle,EmptyDescription} from "@/components/ui/empty";
-import {DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuTrigger} from "@/components/ui/dropdown-menu";
-import {Toaster} from "@/components/ui/sonner";
-import {toast} from "sonner";
-import {defaults,kinds,unit,localDate,dayPlus,planWeek,completeSession,type Media,type Session,type WatchState,type Kind,type Settings} from "@/lib/watch";
+'use client';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Play,
+  Plus,
+  CalendarDays,
+  Layers3,
+  Sparkles,
+  Bell,
+  Moon,
+  LockKeyhole,
+  Clock3,
+  Flame,
+  BookOpen,
+  Search,
+  Check,
+  MoreHorizontal,
+  Trash2,
+  Pencil,
+  ChevronLeft,
+  ChevronRight,
+  Settings2,
+  Send,
+  KeyRound,
+  LoaderCircle,
+  RefreshCw,
+  CheckCheck,
+  Film,
+  CalendarPlus,
+  X,
+  WifiOff,
+  Compass,
+  Info,
+} from 'lucide-react';
+import {
+  Sidebar,
+  SidebarProvider,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarFooter,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Toaster } from '@/components/ui/sonner';
+import { toast } from 'sonner';
+import {
+  defaults,
+  kinds,
+  unit,
+  localDate,
+  dayPlus,
+  planWeek,
+  completeSession,
+  type Media,
+  type Session,
+  type WatchState,
+  type Kind,
+  type Settings,
+} from '@/lib/watch';
 import InstallApp from './install-app';
-import CatalogBrowser,{CatalogDetail} from './catalog-browser';
-import {type CatalogItem,mediaFromCatalog,sameTitle,itemFromMedia} from '@/lib/catalog';
-import AuthPanel,{type AccountUser,type AuthStatus} from './auth-panel';
-import {createSupabaseBrowserClient} from '@/lib/supabase/browser';
-const statuses={watching:"En cours",later:"À commencer",paused:"En pause",completed:"Terminé"};
-const nav=[{id:"catalog",name:"Catalogue",icon:Compass},{id:"today",name:"Aujourd’hui",icon:Play},{id:"collection",name:"Ma collection",icon:Layers3},{id:"planning",name:"Mon planning",icon:CalendarDays},{id:"assistant",name:"Assistant Gemini",icon:Sparkles},{id:"reminders",name:"Rappels",icon:Bell},{id:"account",name:"Mon compte",icon:KeyRound}];
-const dayNames=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
-const fmtDate=(date:string,options:Intl.DateTimeFormatOptions={day:"numeric",month:"long"})=>new Date(date+"T12:00:00").toLocaleDateString("fr-FR",options);
-function zonedNow(zone:string){const parts=new Intl.DateTimeFormat("en-CA",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date());const get=(type:string)=>parts.find(p=>p.type===type)?.value;return {date:`${get("year")}-${get("month")}-${get("day")}`,time:`${get("hour")}:${get("minute")}`};}
-function Choice({value,onChange,options,label}: {value:string;onChange:(v:string)=>void;options:Record<string,string>;label:string}){return <Select value={value} onValueChange={onChange}><SelectTrigger aria-label={label}><SelectValue/></SelectTrigger><SelectContent>{Object.entries(options).map(([v,t])=><SelectItem key={v} value={v}>{t}</SelectItem>)}</SelectContent></Select>;}
-function AppNavigation({view,setView,priority,user}:{view:string;setView:(v:string)=>void;priority:number;user:AccountUser|null}){const {setOpenMobile}=useSidebar();return <Sidebar><SidebarHeader><div className="brand"><span className="brand-icon"><Play fill="currentColor" size={18}/></span>afterwatch<span className="brand-dot">.</span></div></SidebarHeader><SidebarContent><p className="nav-caption">TON ESPACE</p><SidebarMenu>{nav.map(({id,name,icon:Icon})=><SidebarMenuItem key={id}><SidebarMenuButton onClick={()=>{setView(id);setOpenMobile(false)}} isActive={view===id} className="nav-link"><Icon/><span>{name}</span>{id==="collection"&&priority>0&&<span className="nav-count">{priority}</span>}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu><div className="sidebar-note"><Moon size={21}/><strong>Pas besoin de tout rattraper.</strong><p>Choisis ce qui te plaît.<br/>Le reste peut attendre.</p></div></SidebarContent><SidebarFooter><button className="profile" onClick={()=>{setView("account");setOpenMobile(false)}}><span className="avatar">{user?.displayName.slice(0,1).toUpperCase()||"A"}</span><div>{user?.displayName||"Mode découverte"}<small>{user?"Mon compte":"Se connecter"}</small></div></button></SidebarFooter></Sidebar>;}
-function Blank({title,description,action}:{title:string;description:string;action?:React.ReactNode}){return <div className="empty-zone"><Empty><EmptyHeader><BookOpen size={29}/><EmptyTitle>{title}</EmptyTitle><EmptyDescription>{description}</EmptyDescription></EmptyHeader>{action}</Empty></div>;}
-function MediaImage({media,className}:{media:Media;className?:string}){const[broken,setBroken]=useState(false);return media.poster&&!broken?<img className={className} src={media.poster} alt="" loading="lazy" referrerPolicy="no-referrer" onError={()=>setBroken(true)}/>:<div className={className||"poster-fallback"}>{className?<Film size={19}/>:<span>{media.title.slice(0,2).toUpperCase()}</span>}</div>;}
-export default function WatchApp(){
- const[auth,setAuth]=useState<AuthStatus>({user:null,configured:false,telegramEnabled:false,googleEnabled:false});const[authChecked,setAuthChecked]=useState(false);const authUserId=useRef<string|null|undefined>(undefined);
- const[state,setState]=useState<WatchState>(defaults);const[revision,setRevision]=useState(0);const[loaded,setLoaded]=useState(false);const[error,setError]=useState("");const[saving,setSaving]=useState(false);const savingRef=useRef(false);const[aiReady,setAiReady]=useState(false);
- const[view,setView]=useState("catalog");const[catalogDetail,setCatalogDetail]=useState<CatalogItem|null>(null);const[filter,setFilter]=useState("all");const[priorityFilter,setPriorityFilter]=useState("all");const[query,setQuery]=useState("");const[mediaDialog,setMediaDialog]=useState<Media|null|undefined>(undefined);const[sessionDialog,setSessionDialog]=useState<{date:string;mediaId?:string;session?:Session}|null>(null);const[deleteMedia,setDeleteMedia]=useState<Media|null>(null);const[settingsOpen,setSettingsOpen]=useState(false);const[planPreview,setPlanPreview]=useState<Session[]|null>(null);const[weekOffset,setWeekOffset]=useState(0);const[now,setNow]=useState({date:"",time:""});const[reminder,setReminder]=useState<Session|null>(null);const[permission,setPermission]=useState("default");
- const load=useCallback(async()=>{try{
-  setError("");setLoaded(false);
-  const accountResponse=await fetch("/api/auth/user",{cache:"no-store"});const account:AuthStatus&{error?:string}=await accountResponse.json();
-  if(!accountResponse.ok)throw new Error(account.error||"Impossible de vérifier ta connexion.");
-  authUserId.current=account.user?.id||null;setAuth(account);setAuthChecked(true);
-  if(!account.user){setState(defaults);setRevision(0);setAiReady(false);return;}
-  const r=await fetch("/api/state",{cache:"no-store"});const data:any=await r.json();
-  if(r.status===401){setAuth({...account,user:null});authUserId.current=null;setState(defaults);setRevision(0);setAiReady(false);return;}
-  if(!r.ok)throw new Error(data.error||"Chargement impossible.");
-  if(data.userId!==account.user.id){window.location.reload();return;}
-  setState(data.state);setRevision(data.revision);setAiReady(data.aiReady);setLoaded(true);
- }catch(e){setAuthChecked(true);setError(e instanceof Error?e.message:"Connexion indisponible.")}},[]);
- useEffect(()=>{if(new URLSearchParams(window.location.search).has("auth_error"))setView("account");load()},[load]);
- // supabase-js emits SIGNED_IN when it restores a stored session, before /api/auth/user answers.
- // undefined = server check pending: ignore events until then, and re-check instead of reloading so a mismatch cannot loop.
- useEffect(()=>{const client=createSupabaseBrowserClient();if(!client)return;const {data:{subscription}}=client.auth.onAuthStateChange((event,session)=>{if(authUserId.current===undefined)return;if((event==="SIGNED_IN"||event==="SIGNED_OUT")&&(session?.user.id||null)!==authUserId.current){authUserId.current=undefined;setState(defaults);setLoaded(false);setAiReady(false);setMediaDialog(undefined);setSessionDialog(null);setSettingsOpen(false);setPlanPreview(null);setCatalogDetail(null);setReminder(null);window.setTimeout(()=>load(),0)}});return()=>subscription.unsubscribe()},[load]);
- const commit=useCallback(async(next:WatchState)=>{if(!auth.user){setView("account");toast.info("Connecte-toi pour enregistrer ta collection.");return false}if(savingRef.current||!loaded)return false;savingRef.current=true;setSaving(true);try{const r=await fetch("/api/state",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({state:next,revision,expectedUserId:auth.user.id})});const data:any=await r.json();if(r.status===401){window.location.reload();return false}if(!r.ok)throw new Error(data.error||"Sauvegarde impossible.");setState(next);setRevision(data.revision);setError("");return true}catch(e){const message=e instanceof Error?e.message:"Connexion indisponible.";setError(message);toast.error(message);return false}finally{savingRef.current=false;setSaving(false)}},[revision,loaded,auth.user]);
- useEffect(()=>{const tick=()=>setNow(zonedNow(state.settings.timezone));tick();const timer=setInterval(tick,30000);if("Notification"in window)setPermission(Notification.permission);return()=>clearInterval(timer)},[state.settings.timezone]);
- useEffect(()=>{if(!loaded||!state.settings.reminders||!now.date)return;for(const s of state.sessions){if(s.done||s.date!==now.date)continue;const[a,b]=s.time.split(":").map(Number);const[c,d]=now.time.split(":").map(Number);const delay=c*60+d-a*60-b;const tag=`afterwatch-reminder-${s.id}-${s.date}-${s.time}`;if(delay>=0&&delay<3){let seen=false;try{seen=!!sessionStorage.getItem(tag)}catch{}if(seen)continue;try{sessionStorage.setItem(tag,"1")}catch{}setReminder(s);const m=state.media.find(m=>m.id===s.mediaId);if("Notification"in window&&Notification.permission==="granted"){try{new Notification("Afterwatch · C’est l’heure",{body:m?`${m.title} · ${s.duration} min`:"Ta séance t’attend.",icon:"/favicon.svg",tag})}catch{}}break}}},[now,state,loaded]);
- useEffect(()=>{const context=(document as any).modelContext;if(!context?.registerTool)return;const life=new AbortController();const tools=[{name:"read_watch_collection",title:"Lire la collection",description:"Lire les titres et séances sauvegardés de la collection Afterwatch.",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:(input:unknown)=>{if(!input||typeof input!=="object"||Object.keys(input).length)throw new Error("No arguments expected");if(!loaded)throw new Error("Collection not loaded");return {media:state.media,sessions:state.sessions,settings:state.settings}}},{name:"start_adding_watch_title",title:"Préparer l’ajout d’un titre",description:"Ouvre le formulaire d’ajout. Ne sauvegarde pas de titre.",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute:(input:unknown)=>{if(!input||typeof input!=="object"||Object.keys(input).length)throw new Error("No arguments expected");setMediaDialog(null);return {formOpened:true,saved:false}}}];for(const tool of tools){try{Promise.resolve(context.registerTool(tool,{signal:life.signal})).catch(()=>{})}catch{}}return()=>life.abort()},[state,loaded]);
- const today=now.date||zonedNow(state.settings.timezone).date;const active=state.media.filter(m=>m.status!=="completed");const priorities=active.filter(m=>m.priority);const todaySessions=state.sessions.filter(s=>s.date===today).sort((a,b)=>a.time.localeCompare(b.time));const start=dayPlus(today,weekOffset*7);const week=Array.from({length:7},(_,i)=>dayPlus(start,i));const upcoming=state.sessions.filter(s=>!s.done&&s.date>=today).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
- const filtered=state.media.filter(m=>(filter==="all"||m.kind===filter)&&(priorityFilter==="all"||(priorityFilter==="priority"?m.priority:priorityFilter==="normal"?!m.priority:m.status==="completed"))&&m.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a,b)=>Number(b.priority)-Number(a.priority)||a.title.localeCompare(b.title));
- const add=(kind?:Kind)=>{if(!auth.user){setView("account");return}if(!loaded)return;setMediaDialog(kind?{id:"",title:"",kind,priority:true,status:"watching",progress:0,total:kind==="film"?1:0,duration:kind==="manga"?10:kind==="film"?120:kind==="series"?45:24,poster:"",sourceUrl:"",notes:""}:null)};
- const generate=()=>{const proposed=planWeek(state,start);if(!proposed.length){toast.info("Aucune séance à ajouter. Vérifie tes titres, ton temps disponible et les séances déjà prévues.");return}setPlanPreview(proposed)};
- const finish=async(s:Session)=>{if(await commit(completeSession(state,s.id)))toast.success("Séance terminée. Progression mise à jour.")};
- const advance=async(m:Media)=>{const progress=m.total?Math.min(m.total,m.progress+1):m.progress+1;const next={...state,media:state.media.map(x=>x.id===m.id?{...x,progress,status:m.total>0&&progress>=m.total?"completed" as const:"watching" as const}:x),sessions:state.sessions.map(s=>s.mediaId===m.id&&s.to<=progress?{...s,done:true}:s)};if(await commit(next))toast.success(m.kind==="manga"?"Chapitre noté !":"C’est noté !")};
- const canAct=!!auth.user&&loaded&&!saving;
- const addCatalog=async(item:CatalogItem,priority:boolean)=>{if(state.media.some(m=>sameTitle(m,item))){toast.info('Ce titre est déjà dans ta collection.');return true}const media={...mediaFromCatalog(item),priority};const ok=await commit({...state,media:[...state.media,media]});if(ok)toast.success(`${item.title} ajouté à ta liste.`);return ok};
- const sessionRow=(s:Session)=>{const m=state.media.find(m=>m.id===s.mediaId);if(!m)return null;return <div className={`session-row ${s.done?"done":""}`} key={s.id}><MediaImage media={m} className="session-cover"/><div className="session-info"><h3>{m.title}</h3><p>{m.kind==="film"?"Film":`${unit(m)} ${s.from}${s.to>s.from?` – ${s.to}`:""}`} · {s.duration} min</p></div><span className="session-time">{s.time}</span><button title={s.done?"Séance terminée":"Marquer terminé"} aria-label={`Terminer ${m.title}`} className={`session-check ${s.done?"checked":""}`} disabled={!canAct||s.done} onClick={()=>finish(s)}><Check size={16}/></button></div>};
- const mediaCard=(m:Media)=><article className="media-card" key={m.id}><div className="poster-wrap"><button className="collection-cover-detail" onClick={()=>setCatalogDetail(itemFromMedia(m))} aria-label={`Voir la fiche de ${m.title}`}><MediaImage media={m}/></button><span className="poster-type">{kinds[m.kind]}</span><button className={`icon-btn priority-toggle ${m.priority?"active":""}`} title={m.priority?"Retirer la priorité":"Rendre prioritaire"} aria-label={`Priorité pour ${m.title}`} aria-pressed={m.priority} disabled={!canAct} onClick={()=>commit({...state,media:state.media.map(x=>x.id===m.id?{...x,priority:!x.priority}:x)})}><Flame size={17} fill={m.priority?"currentColor":"none"}/></button></div><div className="media-body"><button className="collection-title-detail" onClick={()=>setCatalogDetail(itemFromMedia(m))}><h3>{m.title}</h3></button><div className="media-meta"><span>{m.progress} / {m.total||"?"} {unit(m)}</span><span className={`status-badge ${m.status}`}>{statuses[m.status]}</span></div><Progress value={m.total?m.progress/m.total*100:0} aria-label={`Progression ${m.title}`}/><div className="media-actions"><button className="secondary small-btn" disabled={!canAct||m.status==="completed"} onClick={()=>advance(m)}><Check size={14}/>{m.kind==="film"?"Vu":m.kind==="manga"?"+1 chapitre":"+1 épisode"}</button><DropdownMenu><DropdownMenuTrigger asChild><button className="icon-btn" aria-label={`Options de ${m.title}`}><MoreHorizontal size={19}/></button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={()=>setCatalogDetail(itemFromMedia(m))}><Info/>Voir la fiche</DropdownMenuItem><DropdownMenuItem onClick={()=>setMediaDialog(m)}><Pencil/>Modifier</DropdownMenuItem><DropdownMenuItem onClick={()=>setSessionDialog({date:today,mediaId:m.id})}><CalendarPlus/>Planifier</DropdownMenuItem><DropdownMenuItem onClick={()=>setDeleteMedia(m)} className="danger"><Trash2/>Supprimer</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div></article>;
- return <SidebarProvider><Toaster theme="dark" position="bottom-right" richColors/><AppNavigation view={view} setView={setView} priority={priorities.length} user={auth.user}/><main className="main"><header className="topbar"><div className="topbar-title"><SidebarTrigger aria-label="Ouvrir le menu"/><span>{nav.find(n=>n.id===view)?.name}</span></div><div className="topbar-right"><InstallApp/><span className="private-badge"><LockKeyhole size={13}/>{saving?"Sauvegarde…":auth.user?"Espace privé":"Catalogue public"}</span><button className="icon-btn" aria-label="Ouvrir les rappels" onClick={()=>setView("reminders")}><Bell size={18}/></button><button className="secondary small-btn" onClick={()=>setView("account")}>{auth.user?"Mon compte":"Se connecter"}</button></div></header><div className="workspace">
- {error&&<div className="error-banner" role="alert"><span>{error}</span><button className="secondary small-btn" onClick={load}><RefreshCw size={14}/>Recharger</button></div>}
- {reminder&&<div className="notification-banner" role="status"><Bell size={20}/><p>C’est l’heure de {state.media.find(m=>m.id===reminder.mediaId)?.title} · {reminder.duration} min</p><div className="row"><button className="secondary small-btn" onClick={()=>{setView("today");setReminder(null)}}>Voir la séance</button><button className="icon-btn" aria-label="Fermer le rappel" onClick={()=>setReminder(null)}><X size={16}/></button></div></div>}
- <div className="page-heading"><div><p className="eyebrow">{view==="today"?fmtDate(today,{weekday:"long",day:"numeric",month:"long"}).toUpperCase():"AFTERWATCH / TON ESPACE"}</p><h1>{({catalog:"Trouve ta prochaine histoire.",today:"On reprend où ?",collection:"Toutes tes histoires.",planning:"Une semaine à ton rythme.",assistant:"Ton compagnon de rattrapage.",reminders:"Ne rate pas ta pause.",account:"Ton compte Afterwatch."} as Record<string,string>)[view]}</h1><p>{({catalog:"Parcours les couvertures. Ouvre une fiche. Ajoute à ta liste.",today:"Tes priorités, un peu de temps, et une bonne histoire.",collection:"Anime, mangas, films et séries. Tout est ici.",planning:`${state.settings.budget} minutes par jour. Tu gardes le contrôle.`,assistant:"Des idées à découvrir. Un retard à rattraper. Sans spoiler.",reminders:"Tes séances t’attendent, sans pression.",account:"Retrouve tes histoires sur tous tes appareils."} as Record<string,string>)[view]}</p></div>{["today","collection"].includes(view)?<button className="primary" disabled={!canAct} onClick={()=>setView("catalog")}><Plus size={18}/>Parcourir le catalogue</button>:view==="planning"?<button className="primary" disabled={!canAct} onClick={generate}><CalendarDays size={17}/>Préparer ma semaine</button>:view==="reminders"?<button className="secondary" disabled={!canAct} onClick={()=>setSettingsOpen(true)}><Settings2 size={17}/>Mes horaires</button>:null}</div>
- {view==="catalog"&&authChecked&&!auth.user&&<p className="notice">Découvre le catalogue librement. <button className="ghost-btn small-btn" onClick={()=>setView("account")}>Connecte-toi pour enregistrer tes titres.</button></p>}
- {authChecked&&!auth.user&&!["catalog","account"].includes(view)?<AuthPanel {...auth}/>:!loaded&&!error&&!["catalog","account"].includes(view)?<div className="loading-grid" aria-label="Chargement de la collection"><Skeleton className="skeleton-block h-52 w-full"/><Skeleton className="skeleton-block h-24 w-full"/><Skeleton className="skeleton-block h-64 w-full"/></div>:(loaded||["catalog","account"].includes(view))?<>
- {view==="account"&&(authChecked?<AuthPanel {...auth}/>:<p className="inline-note" role="status">Vérification de la connexion…</p>)}
- {view==="today"&&<><section className="welcome-banner"><img src="/night-city.webp" alt="Une ville illuminée sous un ciel de nuit et une lune corail"/><div className="banner-content"><span className="tag">{todaySessions.some(s=>!s.done)?"TA SESSION DU JOUR":"LE PLAISIR DE REPRENDRE"}</span><h2>{todaySessions.some(s=>!s.done)?state.media.find(m=>m.id===todaySessions.find(s=>!s.done)?.mediaId)?.title:"Un épisode à la fois."}</h2><p>{todaySessions.length?`${todaySessions.filter(s=>!s.done).length} séance(s) restante(s) · ${todaySessions.filter(s=>!s.done).reduce((n,s)=>n+s.duration,0)} minutes au programme`:"Ta liste peut être longue. Ta soirée peut rester simple."}</p><button className="secondary small-btn" onClick={()=>active.length?setView("planning"):setView("catalog")}>{active.length?<CalendarDays size={15}/>:<Plus size={15}/>} {active.length?"Voir mon programme":"Commencer ma collection"}</button></div></section><div className="stats-grid"><div className="stat"><div className="stat-label"><Layers3 size={20}/><span>À reprendre</span></div><strong>{active.length}</strong></div><div className="stat"><div className="stat-label"><Flame size={20}/><span>Prioritaires</span></div><strong>{priorities.length}</strong></div><div className="stat"><div className="stat-label"><Clock3 size={20}/><span>Par jour</span></div><strong>{state.settings.budget===60?"1 h":`${state.settings.budget} m`}</strong></div></div><div className="two-col"><section className="panel"><div className="section-heading"><h2><Play size={18}/>Au programme aujourd’hui</h2><span className="muted-count">{todaySessions.length} séance(s)</span></div>{todaySessions.length?todaySessions.map(sessionRow):<Blank title="Une soirée encore libre" description="Ajoute un titre et choisis quand le regarder ou le lire." action={<button className="secondary small-btn" onClick={()=>state.media.length?setSessionDialog({date:today}):setView("catalog")}><Plus size={15}/>Planifier une séance</button>}/>}</section><section className="panel"><div className="section-heading"><h2>Les 7 prochains jours</h2><button className="icon-btn" aria-label="Régler mes horaires" onClick={()=>setSettingsOpen(true)}><Settings2 size={17}/></button></div><div className="mini-week">{Array.from({length:7},(_,i)=>dayPlus(today,i)).map((d,i)=><button key={d} className={`mini-day ${i===0?"today":""} ${state.sessions.some(s=>s.date===d)?"has-plan":""}`} onClick={()=>{setWeekOffset(0);setView("planning")}}><span>{dayNames[new Date(d+"T12:00:00").getDay()]}</span><b>{new Date(d+"T12:00:00").getDate()}</b><i/></button>)}</div><p className="inline-note"><Clock3 size={15}/>{state.settings.time} · {state.settings.budget} min par jour</p><button className="secondary full mt-24" onClick={()=>{setWeekOffset(0);setView("planning")}}>Organiser ma semaine</button></section></div><section className="mt-24"><div className="section-heading"><h2><Flame size={20}/>En haut de ta liste</h2><button className="ghost-btn small-btn" onClick={()=>{setPriorityFilter("priority");setView("collection")}}>Tout voir</button></div>{priorities.length?<div className="media-grid">{priorities.slice(0,4).map(mediaCard)}</div>:<div className="panel"><p className="inline-note"><Flame size={17}/>Marque tes titres prioritaires avec la flamme. Ils passeront en premier dans ton planning.</p></div>}</section></>}
- {view==="catalog"&&<CatalogBrowser collection={state.media} saving={saving} onAdd={addCatalog} onDetail={setCatalogDetail} onManual={()=>add()}/> }
- {view==="collection"&&<><Tabs value={filter} onValueChange={setFilter} className="media-tabs"><TabsList aria-label="Type de contenu"><TabsTrigger value="all">Tout <span className="muted-count">{state.media.length}</span></TabsTrigger>{Object.entries(kinds).map(([v,t])=><TabsTrigger value={v} key={v}>{t}{v!=="anime"?"s":""}</TabsTrigger>)}</TabsList><div className="toolbar"><div className="filter-line"><div className="search-field"><Search size={17}/><input aria-label="Chercher dans ma collection" placeholder="Rechercher dans ma collection…" value={query} onChange={e=>setQuery(e.target.value)}/></div><Choice value={priorityFilter} onChange={setPriorityFilter} label="Filtrer par priorité" options={{all:"Tous les titres",priority:"Prioritaires",normal:"Non prioritaires",completed:"Terminés"}}/></div><span className="muted-count">{filtered.length} titre(s)</span></div>{["all",...Object.keys(kinds)].map(tab=><TabsContent value={tab} key={tab}>{filtered.length?<div className="media-grid">{filtered.map(mediaCard)}</div>:<div className="empty-collection"><Blank title={state.media.length?"Aucun titre avec ces filtres":"Ta collection commence ici"} description={state.media.length?"Essaie une autre recherche ou change de catégorie.":"Ajoute le premier anime, manga, film ou série que tu veux reprendre."} action={<button className="primary" onClick={()=>setView("catalog")}><Plus size={17}/>Parcourir le catalogue</button>}/></div>}</TabsContent>)}</Tabs></>}
- {view==="planning"&&<><div className="row spread flex-wrap"><p className="inline-note"><Flame size={17}/>Les titres prioritaires passent en premier.</p><button className="secondary small-btn" onClick={()=>setSettingsOpen(true)}><Settings2 size={15}/>{state.settings.budget} min · {state.settings.time}</button></div><div className="week-heading"><h2>{fmtDate(start)} – {fmtDate(dayPlus(start,6))}</h2><div className="row"><button className="icon-btn" aria-label="Semaine précédente" onClick={()=>setWeekOffset(v=>v-1)}><ChevronLeft size={20}/></button><button className="ghost-btn small-btn" onClick={()=>setWeekOffset(0)}>Aujourd’hui</button><button className="icon-btn" aria-label="Semaine suivante" onClick={()=>setWeekOffset(v=>v+1)}><ChevronRight size={20}/></button></div></div><div className="week-grid">{week.map(date=>{const sessions=state.sessions.filter(s=>s.date===date).sort((a,b)=>a.time.localeCompare(b.time));return <section className={`day-column ${date===today?"is-today":""}`} key={date}><div className="day-heading"><span>{dayNames[new Date(date+"T12:00:00").getDay()]}</span><b>{new Date(date+"T12:00:00").getDate()}</b></div>{sessions.map(s=>{const m=state.media.find(m=>m.id===s.mediaId);return m?<div className={`plan-item ${m.priority?"priority":""} ${s.done?"done":""}`} key={s.id}><small>{s.time} · {s.duration} min</small><p>{m.title}</p><small>{m.kind==="film"?"Film":`${unit(m)} ${s.from}${s.to>s.from?`–${s.to}`:""}`}</small><div className="plan-actions"><button className="icon-btn" aria-label={`Terminer ${m.title}`} disabled={s.done||!canAct} onClick={()=>finish(s)}><Check size={15}/></button><button className="icon-btn" aria-label={`Déplacer ${m.title}`} onClick={()=>setSessionDialog({date:s.date,mediaId:s.mediaId,session:s})}><Pencil size={13}/></button><button className="icon-btn" aria-label={`Retirer la séance ${m.title}`} disabled={!canAct} onClick={()=>commit({...state,sessions:state.sessions.filter(x=>x.id!==s.id)})}><X size={14}/></button></div></div>:null})}{!sessions.length&&<p className="day-empty">{state.settings.days.includes(new Date(date+"T12:00:00").getDay())?"Soirée libre":"Jour de pause"}</p>}<button className="plan-add" onClick={()=>state.media.length?setSessionDialog({date}):add()}><Plus size={13}/>Séance</button>{sessions.length>0&&<p className="day-total">{sessions.reduce((n,s)=>n+s.duration,0)} / {state.settings.budget} min</p>}</section>})}</div><p className="form-hint mt-24">Horaires : {state.settings.timezone}. Le programme automatique respecte ton budget et conserve les séances existantes. Les films trop longs restent à planifier manuellement.</p></>}
- {view==="assistant"&&<Assistant key={auth.user?.id} expectedUserId={auth.user?.id||""} aiReady={aiReady} state={state} onPlanning={()=>setView("planning")}/>}
- {view==="reminders"&&<div className="two-col"><section className="panel"><div className="section-heading"><h2><Bell size={18}/>Mes prochains rendez-vous</h2></div>{upcoming.length?upcoming.slice(0,20).map(s=><div key={s.id}><p className="form-hint mt-24">{fmtDate(s.date,{weekday:"long",day:"numeric",month:"long"})}</p>{sessionRow(s)}</div>):<Blank title="Rien de prévu pour le moment" description="Tes rappels apparaîtront dès que tu auras planifié une séance." action={<button className="secondary" onClick={()=>setView("planning")}>Ouvrir mon planning</button>}/>}</section><section className="panel"><div className="section-heading"><h2>Mes notifications</h2></div><div className="settings-row"><div><h3>Rappels dans l’app</h3><p>Une alerte au début de ta séance.</p></div><Switch checked={state.settings.reminders} disabled={!canAct} aria-label="Activer les rappels dans l’app" onCheckedChange={v=>commit({...state,settings:{...state.settings,reminders:v}})}/></div><div className="settings-row"><div><h3>Notifications du navigateur</h3><p>{permission==="granted"?"Autorisées sur cet appareil.":permission==="denied"?"Bloquées. Tu peux les autoriser dans les réglages du navigateur.":"À autoriser sur chaque appareil."}</p></div></div><button className="secondary full" onClick={async()=>{if(!("Notification"in window)){toast.info("Ce navigateur ne prend pas en charge ces notifications. Les rappels dans l’app restent actifs.");return}try{const p=await Notification.requestPermission();setPermission(p);toast.info(p==="granted"?"Notifications autorisées.":"Les rappels dans l’app restent disponibles.")}catch{toast.info("Utilise les rappels dans l’app sur cet appareil.")}}} disabled={permission==="granted"||permission==="denied"}><Bell size={16}/>{permission==="granted"?"Notifications autorisées":"Autoriser les notifications"}</button><p className="notice">Garde l’app ouverte pour recevoir ces rappels. Cette version n’envoie pas de notification quand elle est fermée.</p><p className="subdued">Heure habituelle : <span className="accent-text">{state.settings.time}</span><br/>{state.settings.timezone}</p></section></div>}
- <p className="footer-note"><LockKeyhole size={12}/>{auth.user?"Ta collection est sauvegardée dans ton espace privé.":"Le catalogue est public. Connecte-toi pour créer ta collection privée."}</p></>:null}</div></main>
- {catalogDetail&&<CatalogDetail item={catalogDetail} collection={state.media} saving={saving} onClose={()=>setCatalogDetail(null)} onAdd={addCatalog} onEdit={m=>{setCatalogDetail(null);setMediaDialog(m)}}/>}
- {mediaDialog!==undefined&&<MediaEditor media={mediaDialog} onClose={()=>setMediaDialog(undefined)} saving={saving} onSave={async(m)=>{const exists=state.media.some(x=>x.id===m.id);if(!exists&&state.media.some(x=>x.kind===m.kind&&x.title.toLocaleLowerCase()===m.title.toLocaleLowerCase())){toast.error("Ce titre existe déjà dans ta collection.");return false}const ok=await commit({...state,media:exists?state.media.map(x=>x.id===m.id?m:x):[...state.media,m]});if(ok){toast.success(exists?"Titre mis à jour.":"Ajouté à ta collection.");setMediaDialog(undefined)}return ok}}/>}
- {sessionDialog&&<SessionEditor state={state} data={sessionDialog} saving={saving} onClose={()=>setSessionDialog(null)} onSave={async(s)=>{const ok=await commit({...state,sessions:[...state.sessions.filter(x=>x.id!==s.id),s]});if(ok){setSessionDialog(null);toast.success("Séance enregistrée.")}return ok}}/>}
- {settingsOpen&&<SettingsEditor initial={state.settings} saving={saving} onClose={()=>setSettingsOpen(false)} onSave={async(settings)=>{if(await commit({...state,settings})){setSettingsOpen(false);toast.success("Préférences enregistrées.")}}}/>}
- <AlertDialog open={!!deleteMedia} onOpenChange={open=>!open&&setDeleteMedia(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Retirer {deleteMedia?.title} ?</AlertDialogTitle><AlertDialogDescription>Le titre et ses séances seront supprimés de ta collection.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Garder le titre</AlertDialogCancel><AlertDialogAction disabled={!canAct} onClick={async(e)=>{e.preventDefault();if(deleteMedia&&await commit({...state,media:state.media.filter(m=>m.id!==deleteMedia.id),sessions:state.sessions.filter(s=>s.mediaId!==deleteMedia.id)})){setDeleteMedia(null);toast.success("Titre retiré.")}}}>Retirer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
- <Dialog open={planPreview!==null} onOpenChange={open=>!open&&setPlanPreview(null)}><DialogContent className="modal-content"><DialogHeader><DialogTitle>Ton programme proposé</DialogTitle><DialogDescription>{planPreview?.length} séances, {planPreview?.reduce((n,s)=>n+s.duration,0)} minutes. Rien n’est ajouté avant ta confirmation.</DialogDescription></DialogHeader><div className="catalog-results">{planPreview?.map(s=><div className="catalog-result" key={s.id}><CalendarDays size={19}/><span>{state.media.find(m=>m.id===s.mediaId)?.title}<small>{fmtDate(s.date)} · {s.time} · {s.duration} min · {s.from}–{s.to}</small></span></div>)}</div><p className="form-hint">Total inconnu : une seule unité proposée par titre. Vérifie les épisodes disponibles avant de confirmer.</p><div className="modal-actions"><button className="secondary" onClick={()=>setPlanPreview(null)}>Annuler</button><button className="primary" disabled={!canAct} onClick={async()=>{if(planPreview&&await commit({...state,sessions:[...state.sessions,...planPreview]})){setPlanPreview(null);setView("planning");toast.success("Programme ajouté !")}}}>Ajouter au planning</button></div></DialogContent></Dialog>
- </SidebarProvider>;
+import CatalogBrowser, { CatalogDetail } from './catalog-browser';
+import { type CatalogItem, mediaFromCatalog, sameTitle, itemFromMedia } from '@/lib/catalog';
+import AuthPanel, { type AccountUser, type AuthStatus } from './auth-panel';
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+const statuses = { watching: 'En cours', later: 'À commencer', paused: 'En pause', completed: 'Terminé' };
+const nav = [
+  { id: 'catalog', name: 'Catalogue', icon: Compass },
+  { id: 'today', name: 'Aujourd’hui', icon: Play },
+  { id: 'collection', name: 'Ma collection', icon: Layers3 },
+  { id: 'planning', name: 'Mon planning', icon: CalendarDays },
+  { id: 'assistant', name: 'Assistant Gemini', icon: Sparkles },
+  { id: 'reminders', name: 'Rappels', icon: Bell },
+  { id: 'account', name: 'Mon compte', icon: KeyRound },
+];
+const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+const fmtDate = (date: string, options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' }) =>
+  new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', options);
+function zonedNow(zone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value;
+  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` };
 }
-function MediaEditor({media,onClose,onSave,saving}:{media:Media|null;onClose:()=>void;onSave:(m:Media)=>Promise<boolean>;saving:boolean}){
- const[m,setM]=useState<Media>(media||{id:"",title:"",kind:"anime",priority:true,status:"watching",progress:0,total:0,duration:24,poster:"",sourceUrl:"",notes:""});const[term,setTerm]=useState("");const[results,setResults]=useState<any[]>([]);const[searching,setSearching]=useState(false);const[searchError,setSearchError]=useState("");const[searched,setSearched]=useState(false);const[formError,setFormError]=useState("");const requestSeq=useRef(0);
- const set=<K extends keyof Media>(key:K,value:Media[K])=>setM(old=>({...old,[key]:value}));
- const search=async()=>{if(term.trim().length<2)return;const seq=++requestSeq.current;setSearching(true);setSearchError("");try{const r=await fetch(`/api/catalog?kind=${m.kind}&q=${encodeURIComponent(term.trim())}`);const data:any=await r.json();if(seq!==requestSeq.current)return;if(!r.ok)throw new Error(data.error);setResults(data.results);setSearched(true)}catch(e){if(seq===requestSeq.current)setSearchError(e instanceof Error?e.message:"Recherche indisponible.")}finally{if(seq===requestSeq.current)setSearching(false)}};
- return <Dialog open onOpenChange={o=>!o&&onClose()}><DialogContent className="modal-content"><DialogHeader><DialogTitle>{media?.id?"Modifier le titre":"Ajouter à ma collection"}</DialogTitle><DialogDescription>Note où tu en es pour reprendre au bon endroit.</DialogDescription></DialogHeader><form onSubmit={async e=>{e.preventDefault();setFormError("");if(!m.title.trim()){setFormError("Ajoute un titre.");return}if(m.total&&m.progress>m.total){setFormError("La progression ne peut pas dépasser le total.");return}await onSave({...m,id:m.id||crypto.randomUUID(),title:m.title.trim(),status:m.total>0&&m.progress===m.total?"completed":m.status})}}><div className="form-grid"><label className="field full-span"><span>Catégorie</span><Choice value={m.kind} onChange={v=>{requestSeq.current++;setSearching(false);setResults([]);setSearched(false);setSearchError("");setM(old=>({...old,kind:v as Kind,poster:"",sourceUrl:"",catalog:undefined,total:v==="film"?1:0,duration:v==="manga"?10:v==="film"?120:v==="series"?45:24}))}} label="Catégorie du titre" options={kinds}/></label>{!media?.id&&m.kind!=="film"&&<div className="field full-span"><span>Rechercher un titre dans le catalogue</span><div className="catalog-search"><input value={term} onChange={e=>setTerm(e.target.value)} placeholder={m.kind==="manga"?"Ex. One Piece":"Ex. Frieren, Solo Leveling…"} aria-label="Titre à chercher dans le catalogue" onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();search()}}}/><button type="button" className="secondary" disabled={searching||term.trim().length<2} onClick={search}>{searching?<LoaderCircle className="loading-icon" size={17}/>:<Search size={17}/>}</button></div>{searchError&&<p className="form-hint danger" role="status">{searchError}</p>}{searched&&!results.length&&!searchError&&<p className="form-hint">Aucun résultat. Tu peux saisir le titre ci-dessous.</p>}{results.length>0&&<div className="catalog-results">{results.map((r,i)=><button type="button" key={i} className="catalog-result" onClick={()=>{setM(old=>({...old,title:r.title,poster:r.poster,sourceUrl:r.sourceUrl,total:r.total,catalog:r.catalog,duration:Math.max(1,Math.min(600,r.duration))}));setResults([]);setSearched(false)}}>{r.poster&&<img src={r.poster} alt="" referrerPolicy="no-referrer"/>}<span>{r.title}<small>{r.subtitle}</small></span><Plus size={15}/></button>)}</div>}<span className="form-hint">{m.kind==="series"?<a href="https://www.tvmaze.com" target="_blank" rel="noreferrer">Catalogue : TVmaze · CC BY-SA</a>:<a href="https://jikan.moe" target="_blank" rel="noreferrer">Catalogue : Jikan / MyAnimeList</a>} · ajout manuel toujours possible</span></div>}
- <label className="field full-span"><span>Titre</span><input value={m.title} maxLength={180} onChange={e=>set("title",e.target.value)} required placeholder="Le titre de ton anime, manga, film ou série"/></label><label className="field"><span>Statut</span><Choice value={m.status} onChange={v=>set("status",v as Media["status"])} label="Statut" options={statuses}/></label><label className="field"><span>Minutes par {m.kind==="manga"?"chapitre":m.kind==="film"?"film":"épisode"}</span><input type="number" min={1} max={600} value={m.duration} onChange={e=>set("duration",Number(e.target.value))} required/></label><label className="field"><span>{m.kind==="manga"?"Dernier chapitre lu":m.kind==="film"?"Déjà vu (0 ou 1)":"Dernier épisode terminé"}</span><input type="number" min={0} max={m.kind==="film"?1:100000} value={m.progress} onChange={e=>set("progress",Number(e.target.value))} required/></label><label className="field"><span>{m.kind==="film"?"Total (1 film)":"Total à suivre (0 si inconnu)"}</span><input type="number" min={0} max={100000} value={m.total} onChange={e=>set("total",Number(e.target.value))} required/></label><p className="form-hint full-span">Pour une diffusion en cours, indique le nombre d’épisodes déjà disponibles. Pour plusieurs saisons, tu peux créer un titre par saison.</p><label className="check-line full-span"><Checkbox checked={m.priority} onCheckedChange={v=>set("priority",v===true)}/><Flame size={16} className="accent-text"/>Prioritaire dans mon rattrapage</label><label className="field full-span"><span>Notes · facultatif</span><textarea value={m.notes} onChange={e=>set("notes",e.target.value)} maxLength={2000} placeholder="Saison 2, arrêté en août…"/></label>{m.sourceUrl&&<a className="source-link full-span" href={m.sourceUrl} target="_blank" rel="noreferrer">Voir la fiche du catalogue</a>}</div>{formError&&<p className="notice danger" role="alert">{formError}</p>}<div className="modal-actions mt-24"><button type="button" className="secondary" onClick={onClose}>Annuler</button><button type="submit" className="primary" disabled={saving}>{saving?<LoaderCircle className="loading-icon" size={16}/>:<Check size={16}/>}Enregistrer</button></div></form></DialogContent></Dialog>;
+function Choice({
+  value,
+  onChange,
+  options,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Record<string, string>;
+  label: string;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {Object.entries(options).map(([v, t]) => (
+          <SelectItem key={v} value={v}>
+            {t}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
-function SessionEditor({state,data,saving,onClose,onSave}:{state:WatchState;data:{date:string;mediaId?:string;session?:Session};saving:boolean;onClose:()=>void;onSave:(s:Session)=>Promise<boolean>}){
- const chosen=state.media.find(m=>m.id===data.mediaId)||state.media[0];const[id,setId]=useState(chosen?.id||"");const[date,setDate]=useState(data.date);const[time,setTime]=useState(data.session?.time||state.settings.time);const nextFor=(id:string)=>{const m=state.media.find(m=>m.id===id);return m?Math.max(m.progress,...state.sessions.filter(s=>s.mediaId===id&&s.id!==data.session?.id).map(s=>s.to))+1:1};const[from,setFrom]=useState(data.session?.from||nextFor(id));const[to,setTo]=useState(data.session?.to||nextFor(id));const[err,setErr]=useState("");const m=state.media.find(m=>m.id===id);const duration=m?Math.max(0,to-from+1)*m.duration:0;
- return <Dialog open onOpenChange={o=>!o&&onClose()}><DialogContent className="modal-content"><DialogHeader><DialogTitle>{data.session?"Modifier la séance":"Planifier une séance"}</DialogTitle><DialogDescription>Choisis ton créneau dans le fuseau {state.settings.timezone}.</DialogDescription></DialogHeader><form onSubmit={async e=>{e.preventDefault();setErr("");if(!m||from<1||to<from||(m.total>0&&to>m.total)||duration>1440){setErr("Vérifie les épisodes ou chapitres et le total disponible.");return}const[a,b]=time.split(":").map(Number);const minute=a*60+b;if(minute+duration>1440){setErr("La séance doit se terminer avant minuit.");return}const overlap=state.sessions.some(s=>{if(s.date!==date||s.id===data.session?.id)return false;const[h,mi]=s.time.split(":").map(Number);const start=h*60+mi;return minute<start+s.duration&&minute+duration>start});if(overlap){setErr("Une autre séance occupe déjà ce créneau. Choisis une autre heure.");return}await onSave({id:data.session?.id||crypto.randomUUID(),mediaId:id,date,time,from,to,duration,done:data.session?.done||false})}}><div className="form-grid"><label className="field full-span"><span>Titre</span><Choice value={id} onChange={v=>{setId(v);const n=nextFor(v);setFrom(n);setTo(n)}} label="Titre à planifier" options={Object.fromEntries(state.media.map(m=>[m.id,m.title]))}/></label><label className="field"><span>Jour</span><input type="date" required value={date} onChange={e=>setDate(e.target.value)}/></label><label className="field"><span>Heure</span><input type="time" required value={time} onChange={e=>setTime(e.target.value)}/></label><label className="field"><span>Premier {m?.kind==="manga"?"chapitre":"épisode / film"}</span><input type="number" min={1} max={m?.total||100000} required value={from} onChange={e=>{const n=Number(e.target.value);setFrom(n);if(n>to)setTo(n)}}/></label><label className="field"><span>Dernier {m?.kind==="manga"?"chapitre":"épisode / film"}</span><input type="number" min={from} max={m?.total||100000} required value={to} onChange={e=>setTo(Number(e.target.value))}/></label></div><p className="notice"><Clock3 size={15} className="inline mr-2"/>{duration} minutes prévues{duration>state.settings.budget?` · au-delà de ton objectif de ${state.settings.budget} min`:""}.</p>{err&&<p className="form-hint danger" role="alert">{err}</p>}<div className="modal-actions mt-24"><button type="button" className="secondary" onClick={onClose}>Annuler</button><button type="submit" className="primary" disabled={saving||!m}><CalendarPlus size={16}/>Enregistrer</button></div></form></DialogContent></Dialog>;
+function AppNavigation({
+  view,
+  setView,
+  priority,
+  user,
+}: {
+  view: string;
+  setView: (v: string) => void;
+  priority: number;
+  user: AccountUser | null;
+}) {
+  const { setOpenMobile } = useSidebar();
+  return (
+    <Sidebar>
+      <SidebarHeader>
+        <div className="brand">
+          <span className="brand-icon">
+            <Play fill="currentColor" size={18} />
+          </span>
+          afterwatch<span className="brand-dot">.</span>
+        </div>
+      </SidebarHeader>
+      <SidebarContent>
+        <p className="nav-caption">TON ESPACE</p>
+        <SidebarMenu>
+          {nav.map(({ id, name, icon: Icon }) => (
+            <SidebarMenuItem key={id}>
+              <SidebarMenuButton
+                onClick={() => {
+                  setView(id);
+                  setOpenMobile(false);
+                }}
+                isActive={view === id}
+                className="nav-link"
+              >
+                <Icon />
+                <span>{name}</span>
+                {id === 'collection' && priority > 0 && <span className="nav-count">{priority}</span>}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+        <div className="sidebar-note">
+          <Moon size={21} />
+          <strong>Pas besoin de tout rattraper.</strong>
+          <p>
+            Choisis ce qui te plaît.
+            <br />
+            Le reste peut attendre.
+          </p>
+        </div>
+      </SidebarContent>
+      <SidebarFooter>
+        <button
+          className="profile"
+          onClick={() => {
+            setView('account');
+            setOpenMobile(false);
+          }}
+        >
+          <span className="avatar">{user?.displayName.slice(0, 1).toUpperCase() || 'A'}</span>
+          <div>
+            {user?.displayName || 'Mode découverte'}
+            <small>{user ? 'Mon compte' : 'Se connecter'}</small>
+          </div>
+        </button>
+      </SidebarFooter>
+    </Sidebar>
+  );
 }
-function SettingsEditor({initial,onClose,onSave,saving}:{initial:Settings;onClose:()=>void;onSave:(s:Settings)=>Promise<void>;saving:boolean}){
- const[s,setS]=useState(initial);const[error,setError]=useState("");return <Dialog open onOpenChange={o=>!o&&onClose()}><DialogContent className="modal-content"><DialogHeader><DialogTitle>Mon rythme</DialogTitle><DialogDescription>Ces préférences servent aux prochains programmes. Les séances existantes gardent leurs horaires.</DialogDescription></DialogHeader><form onSubmit={e=>{e.preventDefault();if(!s.days.length){setError("Choisis au moins un jour.");return}try{new Intl.DateTimeFormat("fr",{timeZone:s.timezone})}catch{setError("Le fuseau horaire est invalide.");return}onSave(s)}}><div className="form-grid"><label className="field"><span>Minutes par jour</span><input type="number" min={15} max={600} required value={s.budget} onChange={e=>setS({...s,budget:Number(e.target.value)})}/></label><label className="field"><span>Heure habituelle</span><input type="time" required value={s.time} onChange={e=>setS({...s,time:e.target.value})}/></label><div className="field full-span"><span>Mes jours disponibles</span><div className="day-choices">{[1,2,3,4,5,6,0].map(day=><label className="day-choice" key={day}><Checkbox checked={s.days.includes(day)} onCheckedChange={v=>setS({...s,days:v?[...s.days,day]:s.days.filter(x=>x!==day)})}/>{dayNames[day]}</label>)}</div></div><label className="field full-span"><span>Fuseau horaire</span><Choice value={s.timezone} onChange={v=>setS({...s,timezone:v})} label="Fuseau horaire" options={{"America/New_York":"New York / Floride","America/Port-au-Prince":"Port-au-Prince / Haïti","America/Chicago":"Chicago","America/Los_Angeles":"Los Angeles","Europe/Paris":"Paris",UTC:"UTC"}}/></label><label className="check-line full-span"><Switch checked={s.reminders} onCheckedChange={v=>setS({...s,reminders:v})}/>Rappels quand l’app est ouverte</label></div>{error&&<p className="notice danger">{error}</p>}<div className="modal-actions mt-24"><button type="button" className="secondary" onClick={onClose}>Annuler</button><button type="submit" className="primary" disabled={saving}>Enregistrer</button></div></form></DialogContent></Dialog>;
+function Blank({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="empty-zone">
+      <Empty>
+        <EmptyHeader>
+          <BookOpen size={29} />
+          <EmptyTitle>{title}</EmptyTitle>
+          <EmptyDescription>{description}</EmptyDescription>
+        </EmptyHeader>
+        {action}
+      </Empty>
+    </div>
+  );
 }
-function Assistant({aiReady,state,onPlanning,expectedUserId}:{aiReady:boolean;state:WatchState;onPlanning:()=>void;expectedUserId:string}){
- const[key,setKey]=useState("");const[confirmed,setConfirmed]=useState(false);const[question,setQuestion]=useState("");const[messages,setMessages]=useState<{role:"user"|"model";text:string}[]>([]);const[busy,setBusy]=useState(false);const[err,setErr]=useState("");const[failed,setFailed]=useState("");const chatEnd=useRef<HTMLDivElement>(null);
- useEffect(()=>{chatEnd.current?.scrollIntoView({behavior:"smooth",block:"nearest"})},[messages,busy]);
- const ask=async(text:string)=>{if(!text.trim()||busy)return;if(!aiReady&&(!key.trim()||!confirmed)){setErr("Ajoute ta clé Google AI Studio et confirme que ton projet reste sur le palier gratuit.");return}setBusy(true);setErr("");setFailed("");const history=messages.slice(-8);try{const r=await fetch("/api/assistant",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,apiKey:key.trim()||undefined,history,expectedUserId})});const data:any=await r.json();if(!r.ok)throw new Error(data.error||"L’assistant est indisponible.");setMessages(m=>[...m,{role:"user",text},{role:"model",text:data.text}]);setQuestion("")}catch(e){setErr(e instanceof Error?e.message:"L’assistant est indisponible.");setFailed(text)}finally{setBusy(false)}};
- return <div className="ai-layout"><section className="panel ai-main">{!messages.length?<div className="ai-intro"><div className="sparkle-box"><Sparkles size={30}/></div><h2>Qu’est-ce qu’on regarde ?</h2><p>Gemini s’appuie sur tes priorités et ta progression pour t’aider à choisir. {state.settings.budget} minutes aujourd’hui, c’est déjà un bon début.</p><div className="suggested-prompts"><button disabled={busy} onClick={()=>ask("Aide-moi à rattraper mon retard depuis août avec ma collection et mon temps disponible.")}>Organiser mon rattrapage</button><button disabled={busy} onClick={()=>ask("Recommande-moi trois titres à découvrir d’après ma collection. Explique pourquoi, sans spoiler. Si ma collection est vide, demande-moi mes goûts.")}>Trouver ma prochaine histoire</button><button disabled={busy} onClick={()=>ask("Que me conseilles-tu de regarder ou lire ce soir parmi mes priorités, en respectant mon temps disponible ?")}>Choisir pour ce soir</button></div></div>:<div className="chat-list" aria-live="polite">{messages.map((m,i)=><div className={`chat-message ${m.role}`} key={i}>{m.role==="model"&&<span className="chat-label">GEMINI · AFTERWATCH</span>}{m.text}</div>)}<div ref={chatEnd}/></div>}{busy&&<p className="inline-note" role="status"><LoaderCircle size={16} className="loading-icon"/>Gemini prépare sa réponse…</p>}{err&&<div className="notice danger" role="alert">{err}{failed&&<button className="ghost-btn small-btn" disabled={busy} onClick={()=>ask(failed)}>Réessayer</button>}</div>}<form className="chat-input" onSubmit={e=>{e.preventDefault();ask(question)}}><textarea value={question} onChange={e=>setQuestion(e.target.value)} placeholder="J’ai une heure ce soir, aide-moi à choisir…" aria-label="Message pour Gemini" maxLength={2500} rows={2} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask(question)}}}/><button className="primary" aria-label="Envoyer à Gemini" disabled={busy||!question.trim()}><Send size={18}/></button></form><p className="form-hint mt-24">Gemini donne des conseils ; il ne modifie pas ta collection. Ses réponses peuvent contenir des erreurs et ne vérifient pas les sorties en direct.</p></section><aside className="panel key-panel"><h2><KeyRound size={19}/>{aiReady?"Gemini connecté":"Connecter Gemini"}</h2><div className="key-details">{!aiReady?<div><p>Crée une clé dans <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> en restant sur un projet sans facturation.</p><label className="field"><span>Clé API Gemini</span><input type="password" autoComplete="off" autoCapitalize="off" spellCheck={false} value={key} onChange={e=>setKey(e.target.value)} placeholder="Colle ta clé ici"/></label><p className="form-hint">La clé reste en mémoire dans cet écran et est transmise à Google pour répondre. Elle n’est ni sauvegardée ni incluse dans le code.</p><label className="check-line"><Checkbox checked={confirmed} onCheckedChange={v=>setConfirmed(v===true)}/><span className="form-hint">Mon projet Google utilise le palier gratuit, sans facturation activée.</span></label></div>:<p>La connexion Gemini est configurée pour cet espace.</p>}<div><div className="notice">Gemini 2.5 Flash dispose d’un palier gratuit soumis à quotas. Si la limite est atteinte, réessaie plus tard. Aucun basculement automatique vers un modèle payant.</div><p>Ta question, les titres et la progression de ta collection sont envoyés à Google. Le palier gratuit peut utiliser ces données pour améliorer ses services.</p><a className="form-hint" href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noreferrer">Consulter les conditions et quotas Google</a><div className="divider mt-24"/><p>Tu peux aussi préparer ton programme sans utiliser l’IA.</p><button className="secondary full" onClick={onPlanning}><CalendarDays size={16}/>Planning automatique</button></div></div></aside></div>;
+function MediaImage({ media, className }: { media: Media; className?: string }) {
+  const [broken, setBroken] = useState(false);
+  return media.poster && !broken ? (
+    <img
+      className={className}
+      src={media.poster}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setBroken(true)}
+    />
+  ) : (
+    <div className={className || 'poster-fallback'}>
+      {className ? <Film size={19} /> : <span>{media.title.slice(0, 2).toUpperCase()}</span>}
+    </div>
+  );
+}
+export default function WatchApp() {
+  const [auth, setAuth] = useState<AuthStatus>({
+    user: null,
+    configured: false,
+    telegramEnabled: false,
+    googleEnabled: false,
+  });
+  const [authChecked, setAuthChecked] = useState(false);
+  const authUserId = useRef<string | null | undefined>(undefined);
+  const [state, setState] = useState<WatchState>(defaults);
+  const [revision, setRevision] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [aiReady, setAiReady] = useState(false);
+  const [view, setView] = useState('catalog');
+  const [catalogDetail, setCatalogDetail] = useState<CatalogItem | null>(null);
+  const [filter, setFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [mediaDialog, setMediaDialog] = useState<Media | null | undefined>(undefined);
+  const [sessionDialog, setSessionDialog] = useState<{
+    date: string;
+    mediaId?: string;
+    session?: Session;
+  } | null>(null);
+  const [deleteMedia, setDeleteMedia] = useState<Media | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [planPreview, setPlanPreview] = useState<Session[] | null>(null);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [now, setNow] = useState({ date: '', time: '' });
+  const [reminder, setReminder] = useState<Session | null>(null);
+  const [permission, setPermission] = useState('default');
+  const load = useCallback(async () => {
+    try {
+      setError('');
+      setLoaded(false);
+      const accountResponse = await fetch('/api/auth/user', { cache: 'no-store' });
+      const account: AuthStatus & { error?: string } = await accountResponse.json();
+      if (!accountResponse.ok) throw new Error(account.error || 'Impossible de vérifier ta connexion.');
+      authUserId.current = account.user?.id || null;
+      setAuth(account);
+      setAuthChecked(true);
+      if (!account.user) {
+        setState(defaults);
+        setRevision(0);
+        setAiReady(false);
+        return;
+      }
+      const r = await fetch('/api/state', { cache: 'no-store' });
+      const data: any = await r.json();
+      if (r.status === 401) {
+        setAuth({ ...account, user: null });
+        authUserId.current = null;
+        setState(defaults);
+        setRevision(0);
+        setAiReady(false);
+        return;
+      }
+      if (!r.ok) throw new Error(data.error || 'Chargement impossible.');
+      if (data.userId !== account.user.id) {
+        window.location.reload();
+        return;
+      }
+      setState(data.state);
+      setRevision(data.revision);
+      setAiReady(data.aiReady);
+      setLoaded(true);
+    } catch (e) {
+      setAuthChecked(true);
+      setError(e instanceof Error ? e.message : 'Connexion indisponible.');
+    }
+  }, []);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('auth_error')) setView('account');
+    load();
+  }, [load]);
+  // supabase-js emits SIGNED_IN when it restores a stored session, before /api/auth/user answers.
+  // undefined = server check pending: ignore events until then, and re-check instead of reloading so a mismatch cannot loop.
+  useEffect(() => {
+    const client = createSupabaseBrowserClient();
+    if (!client) return;
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange((event, session) => {
+      if (authUserId.current === undefined) return;
+      if (
+        (event === 'SIGNED_IN' || event === 'SIGNED_OUT') &&
+        (session?.user.id || null) !== authUserId.current
+      ) {
+        authUserId.current = undefined;
+        setState(defaults);
+        setLoaded(false);
+        setAiReady(false);
+        setMediaDialog(undefined);
+        setSessionDialog(null);
+        setSettingsOpen(false);
+        setPlanPreview(null);
+        setCatalogDetail(null);
+        setReminder(null);
+        window.setTimeout(() => load(), 0);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [load]);
+  const commit = useCallback(
+    async (next: WatchState) => {
+      if (!auth.user) {
+        setView('account');
+        toast.info('Connecte-toi pour enregistrer ta collection.');
+        return false;
+      }
+      if (savingRef.current || !loaded) return false;
+      savingRef.current = true;
+      setSaving(true);
+      try {
+        const r = await fetch('/api/state', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: next, revision, expectedUserId: auth.user.id }),
+        });
+        const data: any = await r.json();
+        if (r.status === 401) {
+          window.location.reload();
+          return false;
+        }
+        if (!r.ok) throw new Error(data.error || 'Sauvegarde impossible.');
+        setState(next);
+        setRevision(data.revision);
+        setError('');
+        return true;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Connexion indisponible.';
+        setError(message);
+        toast.error(message);
+        return false;
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+      }
+    },
+    [revision, loaded, auth.user],
+  );
+  useEffect(() => {
+    const tick = () => setNow(zonedNow(state.settings.timezone));
+    tick();
+    const timer = setInterval(tick, 30000);
+    if ('Notification' in window) setPermission(Notification.permission);
+    return () => clearInterval(timer);
+  }, [state.settings.timezone]);
+  useEffect(() => {
+    if (!loaded || !state.settings.reminders || !now.date) return;
+    for (const s of state.sessions) {
+      if (s.done || s.date !== now.date) continue;
+      const [a, b] = s.time.split(':').map(Number);
+      const [c, d] = now.time.split(':').map(Number);
+      const delay = c * 60 + d - a * 60 - b;
+      const tag = `afterwatch-reminder-${s.id}-${s.date}-${s.time}`;
+      if (delay >= 0 && delay < 3) {
+        let seen = false;
+        try {
+          seen = !!sessionStorage.getItem(tag);
+        } catch {}
+        if (seen) continue;
+        try {
+          sessionStorage.setItem(tag, '1');
+        } catch {}
+        setReminder(s);
+        const m = state.media.find((m) => m.id === s.mediaId);
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification('Afterwatch · C’est l’heure', {
+              body: m ? `${m.title} · ${s.duration} min` : 'Ta séance t’attend.',
+              icon: '/favicon.svg',
+              tag,
+            });
+          } catch {}
+        }
+        break;
+      }
+    }
+  }, [now, state, loaded]);
+  useEffect(() => {
+    const context = (document as any).modelContext;
+    if (!context?.registerTool) return;
+    const life = new AbortController();
+    const tools = [
+      {
+        name: 'read_watch_collection',
+        title: 'Lire la collection',
+        description: 'Lire les titres et séances sauvegardés de la collection Afterwatch.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
+        execute: (input: unknown) => {
+          if (!input || typeof input !== 'object' || Object.keys(input).length)
+            throw new Error('No arguments expected');
+          if (!loaded) throw new Error('Collection not loaded');
+          return { media: state.media, sessions: state.sessions, settings: state.settings };
+        },
+      },
+      {
+        name: 'start_adding_watch_title',
+        title: 'Préparer l’ajout d’un titre',
+        description: 'Ouvre le formulaire d’ajout. Ne sauvegarde pas de titre.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
+        execute: (input: unknown) => {
+          if (!input || typeof input !== 'object' || Object.keys(input).length)
+            throw new Error('No arguments expected');
+          setMediaDialog(null);
+          return { formOpened: true, saved: false };
+        },
+      },
+    ];
+    for (const tool of tools) {
+      try {
+        Promise.resolve(context.registerTool(tool, { signal: life.signal })).catch(() => {});
+      } catch {}
+    }
+    return () => life.abort();
+  }, [state, loaded]);
+  const today = now.date || zonedNow(state.settings.timezone).date;
+  const active = state.media.filter((m) => m.status !== 'completed');
+  const priorities = active.filter((m) => m.priority);
+  const todaySessions = state.sessions
+    .filter((s) => s.date === today)
+    .sort((a, b) => a.time.localeCompare(b.time));
+  const start = dayPlus(today, weekOffset * 7);
+  const week = Array.from({ length: 7 }, (_, i) => dayPlus(start, i));
+  const upcoming = state.sessions
+    .filter((s) => !s.done && s.date >= today)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const filtered = state.media
+    .filter(
+      (m) =>
+        (filter === 'all' || m.kind === filter) &&
+        (priorityFilter === 'all' ||
+          (priorityFilter === 'priority'
+            ? m.priority
+            : priorityFilter === 'normal'
+              ? !m.priority
+              : m.status === 'completed')) &&
+        m.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+    )
+    .sort((a, b) => Number(b.priority) - Number(a.priority) || a.title.localeCompare(b.title));
+  const add = (kind?: Kind) => {
+    if (!auth.user) {
+      setView('account');
+      return;
+    }
+    if (!loaded) return;
+    setMediaDialog(
+      kind
+        ? {
+            id: '',
+            title: '',
+            kind,
+            priority: true,
+            status: 'watching',
+            progress: 0,
+            total: kind === 'film' ? 1 : 0,
+            duration: kind === 'manga' ? 10 : kind === 'film' ? 120 : kind === 'series' ? 45 : 24,
+            poster: '',
+            sourceUrl: '',
+            notes: '',
+          }
+        : null,
+    );
+  };
+  const generate = () => {
+    const proposed = planWeek(state, start);
+    if (!proposed.length) {
+      toast.info(
+        'Aucune séance à ajouter. Vérifie tes titres, ton temps disponible et les séances déjà prévues.',
+      );
+      return;
+    }
+    setPlanPreview(proposed);
+  };
+  const finish = async (s: Session) => {
+    if (await commit(completeSession(state, s.id)))
+      toast.success('Séance terminée. Progression mise à jour.');
+  };
+  const advance = async (m: Media) => {
+    const progress = m.total ? Math.min(m.total, m.progress + 1) : m.progress + 1;
+    const next = {
+      ...state,
+      media: state.media.map((x) =>
+        x.id === m.id
+          ? {
+              ...x,
+              progress,
+              status: m.total > 0 && progress >= m.total ? ('completed' as const) : ('watching' as const),
+            }
+          : x,
+      ),
+      sessions: state.sessions.map((s) =>
+        s.mediaId === m.id && s.to <= progress ? { ...s, done: true } : s,
+      ),
+    };
+    if (await commit(next)) toast.success(m.kind === 'manga' ? 'Chapitre noté !' : 'C’est noté !');
+  };
+  const canAct = !!auth.user && loaded && !saving;
+  const addCatalog = async (item: CatalogItem, priority: boolean) => {
+    if (state.media.some((m) => sameTitle(m, item))) {
+      toast.info('Ce titre est déjà dans ta collection.');
+      return true;
+    }
+    const media = { ...mediaFromCatalog(item), priority };
+    const ok = await commit({ ...state, media: [...state.media, media] });
+    if (ok) toast.success(`${item.title} ajouté à ta liste.`);
+    return ok;
+  };
+  const sessionRow = (s: Session) => {
+    const m = state.media.find((m) => m.id === s.mediaId);
+    if (!m) return null;
+    return (
+      <div className={`session-row ${s.done ? 'done' : ''}`} key={s.id}>
+        <MediaImage media={m} className="session-cover" />
+        <div className="session-info">
+          <h3>{m.title}</h3>
+          <p>
+            {m.kind === 'film' ? 'Film' : `${unit(m)} ${s.from}${s.to > s.from ? ` – ${s.to}` : ''}`} ·{' '}
+            {s.duration} min
+          </p>
+        </div>
+        <span className="session-time">{s.time}</span>
+        <button
+          title={s.done ? 'Séance terminée' : 'Marquer terminé'}
+          aria-label={`Terminer ${m.title}`}
+          className={`session-check ${s.done ? 'checked' : ''}`}
+          disabled={!canAct || s.done}
+          onClick={() => finish(s)}
+        >
+          <Check size={16} />
+        </button>
+      </div>
+    );
+  };
+  const mediaCard = (m: Media) => (
+    <article className="media-card" key={m.id}>
+      <div className="poster-wrap">
+        <button
+          className="collection-cover-detail"
+          onClick={() => setCatalogDetail(itemFromMedia(m))}
+          aria-label={`Voir la fiche de ${m.title}`}
+        >
+          <MediaImage media={m} />
+        </button>
+        <span className="poster-type">{kinds[m.kind]}</span>
+        <button
+          className={`icon-btn priority-toggle ${m.priority ? 'active' : ''}`}
+          title={m.priority ? 'Retirer la priorité' : 'Rendre prioritaire'}
+          aria-label={`Priorité pour ${m.title}`}
+          aria-pressed={m.priority}
+          disabled={!canAct}
+          onClick={() =>
+            commit({
+              ...state,
+              media: state.media.map((x) => (x.id === m.id ? { ...x, priority: !x.priority } : x)),
+            })
+          }
+        >
+          <Flame size={17} fill={m.priority ? 'currentColor' : 'none'} />
+        </button>
+      </div>
+      <div className="media-body">
+        <button className="collection-title-detail" onClick={() => setCatalogDetail(itemFromMedia(m))}>
+          <h3>{m.title}</h3>
+        </button>
+        <div className="media-meta">
+          <span>
+            {m.progress} / {m.total || '?'} {unit(m)}
+          </span>
+          <span className={`status-badge ${m.status}`}>{statuses[m.status]}</span>
+        </div>
+        <Progress value={m.total ? (m.progress / m.total) * 100 : 0} aria-label={`Progression ${m.title}`} />
+        <div className="media-actions">
+          <button
+            className="secondary small-btn"
+            disabled={!canAct || m.status === 'completed'}
+            onClick={() => advance(m)}
+          >
+            <Check size={14} />
+            {m.kind === 'film' ? 'Vu' : m.kind === 'manga' ? '+1 chapitre' : '+1 épisode'}
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="icon-btn" aria-label={`Options de ${m.title}`}>
+                <MoreHorizontal size={19} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setCatalogDetail(itemFromMedia(m))}>
+                <Info />
+                Voir la fiche
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMediaDialog(m)}>
+                <Pencil />
+                Modifier
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSessionDialog({ date: today, mediaId: m.id })}>
+                <CalendarPlus />
+                Planifier
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDeleteMedia(m)} className="danger">
+                <Trash2 />
+                Supprimer
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </article>
+  );
+  return (
+    <SidebarProvider>
+      <Toaster theme="dark" position="bottom-right" richColors />
+      <AppNavigation view={view} setView={setView} priority={priorities.length} user={auth.user} />
+      <main className="main">
+        <header className="topbar">
+          <div className="topbar-title">
+            <SidebarTrigger aria-label="Ouvrir le menu" />
+            <span>{nav.find((n) => n.id === view)?.name}</span>
+          </div>
+          <div className="topbar-right">
+            <InstallApp />
+            <span className="private-badge">
+              <LockKeyhole size={13} />
+              {saving ? 'Sauvegarde…' : auth.user ? 'Espace privé' : 'Catalogue public'}
+            </span>
+            <button className="icon-btn" aria-label="Ouvrir les rappels" onClick={() => setView('reminders')}>
+              <Bell size={18} />
+            </button>
+            <button className="secondary small-btn" onClick={() => setView('account')}>
+              {auth.user ? 'Mon compte' : 'Se connecter'}
+            </button>
+          </div>
+        </header>
+        <div className="workspace">
+          {error && (
+            <div className="error-banner" role="alert">
+              <span>{error}</span>
+              <button className="secondary small-btn" onClick={load}>
+                <RefreshCw size={14} />
+                Recharger
+              </button>
+            </div>
+          )}
+          {reminder && (
+            <div className="notification-banner" role="status">
+              <Bell size={20} />
+              <p>
+                C’est l’heure de {state.media.find((m) => m.id === reminder.mediaId)?.title} ·{' '}
+                {reminder.duration} min
+              </p>
+              <div className="row">
+                <button
+                  className="secondary small-btn"
+                  onClick={() => {
+                    setView('today');
+                    setReminder(null);
+                  }}
+                >
+                  Voir la séance
+                </button>
+                <button className="icon-btn" aria-label="Fermer le rappel" onClick={() => setReminder(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="page-heading">
+            <div>
+              <p className="eyebrow">
+                {view === 'today'
+                  ? fmtDate(today, { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()
+                  : 'AFTERWATCH / TON ESPACE'}
+              </p>
+              <h1>
+                {
+                  (
+                    {
+                      catalog: 'Trouve ta prochaine histoire.',
+                      today: 'On reprend où ?',
+                      collection: 'Toutes tes histoires.',
+                      planning: 'Une semaine à ton rythme.',
+                      assistant: 'Ton compagnon de rattrapage.',
+                      reminders: 'Ne rate pas ta pause.',
+                      account: 'Ton compte Afterwatch.',
+                    } as Record<string, string>
+                  )[view]
+                }
+              </h1>
+              <p>
+                {
+                  (
+                    {
+                      catalog: 'Parcours les couvertures. Ouvre une fiche. Ajoute à ta liste.',
+                      today: 'Tes priorités, un peu de temps, et une bonne histoire.',
+                      collection: 'Anime, mangas, films et séries. Tout est ici.',
+                      planning: `${state.settings.budget} minutes par jour. Tu gardes le contrôle.`,
+                      assistant: 'Des idées à découvrir. Un retard à rattraper. Sans spoiler.',
+                      reminders: 'Tes séances t’attendent, sans pression.',
+                      account: 'Retrouve tes histoires sur tous tes appareils.',
+                    } as Record<string, string>
+                  )[view]
+                }
+              </p>
+            </div>
+            {['today', 'collection'].includes(view) ? (
+              <button className="primary" disabled={!canAct} onClick={() => setView('catalog')}>
+                <Plus size={18} />
+                Parcourir le catalogue
+              </button>
+            ) : view === 'planning' ? (
+              <button className="primary" disabled={!canAct} onClick={generate}>
+                <CalendarDays size={17} />
+                Préparer ma semaine
+              </button>
+            ) : view === 'reminders' ? (
+              <button className="secondary" disabled={!canAct} onClick={() => setSettingsOpen(true)}>
+                <Settings2 size={17} />
+                Mes horaires
+              </button>
+            ) : null}
+          </div>
+          {view === 'catalog' && authChecked && !auth.user && (
+            <p className="notice">
+              Découvre le catalogue librement.{' '}
+              <button className="ghost-btn small-btn" onClick={() => setView('account')}>
+                Connecte-toi pour enregistrer tes titres.
+              </button>
+            </p>
+          )}
+          {authChecked && !auth.user && !['catalog', 'account'].includes(view) ? (
+            <AuthPanel {...auth} />
+          ) : !loaded && !error && !['catalog', 'account'].includes(view) ? (
+            <div className="loading-grid" aria-label="Chargement de la collection">
+              <Skeleton className="skeleton-block h-52 w-full" />
+              <Skeleton className="skeleton-block h-24 w-full" />
+              <Skeleton className="skeleton-block h-64 w-full" />
+            </div>
+          ) : loaded || ['catalog', 'account'].includes(view) ? (
+            <>
+              {view === 'account' &&
+                (authChecked ? (
+                  <AuthPanel {...auth} />
+                ) : (
+                  <p className="inline-note" role="status">
+                    Vérification de la connexion…
+                  </p>
+                ))}
+              {view === 'today' && (
+                <>
+                  <section className="welcome-banner">
+                    <img
+                      src="/night-city.webp"
+                      alt="Une ville illuminée sous un ciel de nuit et une lune corail"
+                    />
+                    <div className="banner-content">
+                      <span className="tag">
+                        {todaySessions.some((s) => !s.done)
+                          ? 'TA SESSION DU JOUR'
+                          : 'LE PLAISIR DE REPRENDRE'}
+                      </span>
+                      <h2>
+                        {todaySessions.some((s) => !s.done)
+                          ? state.media.find((m) => m.id === todaySessions.find((s) => !s.done)?.mediaId)
+                              ?.title
+                          : 'Un épisode à la fois.'}
+                      </h2>
+                      <p>
+                        {todaySessions.length
+                          ? `${todaySessions.filter((s) => !s.done).length} séance(s) restante(s) · ${todaySessions.filter((s) => !s.done).reduce((n, s) => n + s.duration, 0)} minutes au programme`
+                          : 'Ta liste peut être longue. Ta soirée peut rester simple.'}
+                      </p>
+                      <button
+                        className="secondary small-btn"
+                        onClick={() => (active.length ? setView('planning') : setView('catalog'))}
+                      >
+                        {active.length ? <CalendarDays size={15} /> : <Plus size={15} />}{' '}
+                        {active.length ? 'Voir mon programme' : 'Commencer ma collection'}
+                      </button>
+                    </div>
+                  </section>
+                  <div className="stats-grid">
+                    <div className="stat">
+                      <div className="stat-label">
+                        <Layers3 size={20} />
+                        <span>À reprendre</span>
+                      </div>
+                      <strong>{active.length}</strong>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-label">
+                        <Flame size={20} />
+                        <span>Prioritaires</span>
+                      </div>
+                      <strong>{priorities.length}</strong>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-label">
+                        <Clock3 size={20} />
+                        <span>Par jour</span>
+                      </div>
+                      <strong>{state.settings.budget === 60 ? '1 h' : `${state.settings.budget} m`}</strong>
+                    </div>
+                  </div>
+                  <div className="two-col">
+                    <section className="panel">
+                      <div className="section-heading">
+                        <h2>
+                          <Play size={18} />
+                          Au programme aujourd’hui
+                        </h2>
+                        <span className="muted-count">{todaySessions.length} séance(s)</span>
+                      </div>
+                      {todaySessions.length ? (
+                        todaySessions.map(sessionRow)
+                      ) : (
+                        <Blank
+                          title="Une soirée encore libre"
+                          description="Ajoute un titre et choisis quand le regarder ou le lire."
+                          action={
+                            <button
+                              className="secondary small-btn"
+                              onClick={() =>
+                                state.media.length ? setSessionDialog({ date: today }) : setView('catalog')
+                              }
+                            >
+                              <Plus size={15} />
+                              Planifier une séance
+                            </button>
+                          }
+                        />
+                      )}
+                    </section>
+                    <section className="panel">
+                      <div className="section-heading">
+                        <h2>Les 7 prochains jours</h2>
+                        <button
+                          className="icon-btn"
+                          aria-label="Régler mes horaires"
+                          onClick={() => setSettingsOpen(true)}
+                        >
+                          <Settings2 size={17} />
+                        </button>
+                      </div>
+                      <div className="mini-week">
+                        {Array.from({ length: 7 }, (_, i) => dayPlus(today, i)).map((d, i) => (
+                          <button
+                            key={d}
+                            className={`mini-day ${i === 0 ? 'today' : ''} ${state.sessions.some((s) => s.date === d) ? 'has-plan' : ''}`}
+                            onClick={() => {
+                              setWeekOffset(0);
+                              setView('planning');
+                            }}
+                          >
+                            <span>{dayNames[new Date(d + 'T12:00:00').getDay()]}</span>
+                            <b>{new Date(d + 'T12:00:00').getDate()}</b>
+                            <i />
+                          </button>
+                        ))}
+                      </div>
+                      <p className="inline-note">
+                        <Clock3 size={15} />
+                        {state.settings.time} · {state.settings.budget} min par jour
+                      </p>
+                      <button
+                        className="secondary full mt-24"
+                        onClick={() => {
+                          setWeekOffset(0);
+                          setView('planning');
+                        }}
+                      >
+                        Organiser ma semaine
+                      </button>
+                    </section>
+                  </div>
+                  <section className="mt-24">
+                    <div className="section-heading">
+                      <h2>
+                        <Flame size={20} />
+                        En haut de ta liste
+                      </h2>
+                      <button
+                        className="ghost-btn small-btn"
+                        onClick={() => {
+                          setPriorityFilter('priority');
+                          setView('collection');
+                        }}
+                      >
+                        Tout voir
+                      </button>
+                    </div>
+                    {priorities.length ? (
+                      <div className="media-grid">{priorities.slice(0, 4).map(mediaCard)}</div>
+                    ) : (
+                      <div className="panel">
+                        <p className="inline-note">
+                          <Flame size={17} />
+                          Marque tes titres prioritaires avec la flamme. Ils passeront en premier dans ton
+                          planning.
+                        </p>
+                      </div>
+                    )}
+                  </section>
+                </>
+              )}
+              {view === 'catalog' && (
+                <CatalogBrowser
+                  collection={state.media}
+                  saving={saving}
+                  onAdd={addCatalog}
+                  onDetail={setCatalogDetail}
+                  onManual={() => add()}
+                />
+              )}
+              {view === 'collection' && (
+                <>
+                  <Tabs value={filter} onValueChange={setFilter} className="media-tabs">
+                    <TabsList aria-label="Type de contenu">
+                      <TabsTrigger value="all">
+                        Tout <span className="muted-count">{state.media.length}</span>
+                      </TabsTrigger>
+                      {Object.entries(kinds).map(([v, t]) => (
+                        <TabsTrigger value={v} key={v}>
+                          {t}
+                          {v !== 'anime' ? 's' : ''}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                    <div className="toolbar">
+                      <div className="filter-line">
+                        <div className="search-field">
+                          <Search size={17} />
+                          <input
+                            aria-label="Chercher dans ma collection"
+                            placeholder="Rechercher dans ma collection…"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                          />
+                        </div>
+                        <Choice
+                          value={priorityFilter}
+                          onChange={setPriorityFilter}
+                          label="Filtrer par priorité"
+                          options={{
+                            all: 'Tous les titres',
+                            priority: 'Prioritaires',
+                            normal: 'Non prioritaires',
+                            completed: 'Terminés',
+                          }}
+                        />
+                      </div>
+                      <span className="muted-count">{filtered.length} titre(s)</span>
+                    </div>
+                    {['all', ...Object.keys(kinds)].map((tab) => (
+                      <TabsContent value={tab} key={tab}>
+                        {filtered.length ? (
+                          <div className="media-grid">{filtered.map(mediaCard)}</div>
+                        ) : (
+                          <div className="empty-collection">
+                            <Blank
+                              title={
+                                state.media.length
+                                  ? 'Aucun titre avec ces filtres'
+                                  : 'Ta collection commence ici'
+                              }
+                              description={
+                                state.media.length
+                                  ? 'Essaie une autre recherche ou change de catégorie.'
+                                  : 'Ajoute le premier anime, manga, film ou série que tu veux reprendre.'
+                              }
+                              action={
+                                <button className="primary" onClick={() => setView('catalog')}>
+                                  <Plus size={17} />
+                                  Parcourir le catalogue
+                                </button>
+                              }
+                            />
+                          </div>
+                        )}
+                      </TabsContent>
+                    ))}
+                  </Tabs>
+                </>
+              )}
+              {view === 'planning' && (
+                <>
+                  <div className="row spread flex-wrap">
+                    <p className="inline-note">
+                      <Flame size={17} />
+                      Les titres prioritaires passent en premier.
+                    </p>
+                    <button className="secondary small-btn" onClick={() => setSettingsOpen(true)}>
+                      <Settings2 size={15} />
+                      {state.settings.budget} min · {state.settings.time}
+                    </button>
+                  </div>
+                  <div className="week-heading">
+                    <h2>
+                      {fmtDate(start)} – {fmtDate(dayPlus(start, 6))}
+                    </h2>
+                    <div className="row">
+                      <button
+                        className="icon-btn"
+                        aria-label="Semaine précédente"
+                        onClick={() => setWeekOffset((v) => v - 1)}
+                      >
+                        <ChevronLeft size={20} />
+                      </button>
+                      <button className="ghost-btn small-btn" onClick={() => setWeekOffset(0)}>
+                        Aujourd’hui
+                      </button>
+                      <button
+                        className="icon-btn"
+                        aria-label="Semaine suivante"
+                        onClick={() => setWeekOffset((v) => v + 1)}
+                      >
+                        <ChevronRight size={20} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="week-grid">
+                    {week.map((date) => {
+                      const sessions = state.sessions
+                        .filter((s) => s.date === date)
+                        .sort((a, b) => a.time.localeCompare(b.time));
+                      return (
+                        <section className={`day-column ${date === today ? 'is-today' : ''}`} key={date}>
+                          <div className="day-heading">
+                            <span>{dayNames[new Date(date + 'T12:00:00').getDay()]}</span>
+                            <b>{new Date(date + 'T12:00:00').getDate()}</b>
+                          </div>
+                          {sessions.map((s) => {
+                            const m = state.media.find((m) => m.id === s.mediaId);
+                            return m ? (
+                              <div
+                                className={`plan-item ${m.priority ? 'priority' : ''} ${s.done ? 'done' : ''}`}
+                                key={s.id}
+                              >
+                                <small>
+                                  {s.time} · {s.duration} min
+                                </small>
+                                <p>{m.title}</p>
+                                <small>
+                                  {m.kind === 'film'
+                                    ? 'Film'
+                                    : `${unit(m)} ${s.from}${s.to > s.from ? `–${s.to}` : ''}`}
+                                </small>
+                                <div className="plan-actions">
+                                  <button
+                                    className="icon-btn"
+                                    aria-label={`Terminer ${m.title}`}
+                                    disabled={s.done || !canAct}
+                                    onClick={() => finish(s)}
+                                  >
+                                    <Check size={15} />
+                                  </button>
+                                  <button
+                                    className="icon-btn"
+                                    aria-label={`Déplacer ${m.title}`}
+                                    onClick={() =>
+                                      setSessionDialog({ date: s.date, mediaId: s.mediaId, session: s })
+                                    }
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button
+                                    className="icon-btn"
+                                    aria-label={`Retirer la séance ${m.title}`}
+                                    disabled={!canAct}
+                                    onClick={() =>
+                                      commit({
+                                        ...state,
+                                        sessions: state.sessions.filter((x) => x.id !== s.id),
+                                      })
+                                    }
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null;
+                          })}
+                          {!sessions.length && (
+                            <p className="day-empty">
+                              {state.settings.days.includes(new Date(date + 'T12:00:00').getDay())
+                                ? 'Soirée libre'
+                                : 'Jour de pause'}
+                            </p>
+                          )}
+                          <button
+                            className="plan-add"
+                            onClick={() => (state.media.length ? setSessionDialog({ date }) : add())}
+                          >
+                            <Plus size={13} />
+                            Séance
+                          </button>
+                          {sessions.length > 0 && (
+                            <p className="day-total">
+                              {sessions.reduce((n, s) => n + s.duration, 0)} / {state.settings.budget} min
+                            </p>
+                          )}
+                        </section>
+                      );
+                    })}
+                  </div>
+                  <p className="form-hint mt-24">
+                    Horaires : {state.settings.timezone}. Le programme automatique respecte ton budget et
+                    conserve les séances existantes. Les films trop longs restent à planifier manuellement.
+                  </p>
+                </>
+              )}
+              {view === 'assistant' && (
+                <Assistant
+                  key={auth.user?.id}
+                  expectedUserId={auth.user?.id || ''}
+                  aiReady={aiReady}
+                  state={state}
+                  onPlanning={() => setView('planning')}
+                />
+              )}
+              {view === 'reminders' && (
+                <div className="two-col">
+                  <section className="panel">
+                    <div className="section-heading">
+                      <h2>
+                        <Bell size={18} />
+                        Mes prochains rendez-vous
+                      </h2>
+                    </div>
+                    {upcoming.length ? (
+                      upcoming.slice(0, 20).map((s) => (
+                        <div key={s.id}>
+                          <p className="form-hint mt-24">
+                            {fmtDate(s.date, { weekday: 'long', day: 'numeric', month: 'long' })}
+                          </p>
+                          {sessionRow(s)}
+                        </div>
+                      ))
+                    ) : (
+                      <Blank
+                        title="Rien de prévu pour le moment"
+                        description="Tes rappels apparaîtront dès que tu auras planifié une séance."
+                        action={
+                          <button className="secondary" onClick={() => setView('planning')}>
+                            Ouvrir mon planning
+                          </button>
+                        }
+                      />
+                    )}
+                  </section>
+                  <section className="panel">
+                    <div className="section-heading">
+                      <h2>Mes notifications</h2>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <h3>Rappels dans l’app</h3>
+                        <p>Une alerte au début de ta séance.</p>
+                      </div>
+                      <Switch
+                        checked={state.settings.reminders}
+                        disabled={!canAct}
+                        aria-label="Activer les rappels dans l’app"
+                        onCheckedChange={(v) =>
+                          commit({ ...state, settings: { ...state.settings, reminders: v } })
+                        }
+                      />
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <h3>Notifications du navigateur</h3>
+                        <p>
+                          {permission === 'granted'
+                            ? 'Autorisées sur cet appareil.'
+                            : permission === 'denied'
+                              ? 'Bloquées. Tu peux les autoriser dans les réglages du navigateur.'
+                              : 'À autoriser sur chaque appareil.'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      className="secondary full"
+                      onClick={async () => {
+                        if (!('Notification' in window)) {
+                          toast.info(
+                            'Ce navigateur ne prend pas en charge ces notifications. Les rappels dans l’app restent actifs.',
+                          );
+                          return;
+                        }
+                        try {
+                          const p = await Notification.requestPermission();
+                          setPermission(p);
+                          toast.info(
+                            p === 'granted'
+                              ? 'Notifications autorisées.'
+                              : 'Les rappels dans l’app restent disponibles.',
+                          );
+                        } catch {
+                          toast.info('Utilise les rappels dans l’app sur cet appareil.');
+                        }
+                      }}
+                      disabled={permission === 'granted' || permission === 'denied'}
+                    >
+                      <Bell size={16} />
+                      {permission === 'granted' ? 'Notifications autorisées' : 'Autoriser les notifications'}
+                    </button>
+                    <p className="notice">
+                      Garde l’app ouverte pour recevoir ces rappels. Cette version n’envoie pas de
+                      notification quand elle est fermée.
+                    </p>
+                    <p className="subdued">
+                      Heure habituelle : <span className="accent-text">{state.settings.time}</span>
+                      <br />
+                      {state.settings.timezone}
+                    </p>
+                  </section>
+                </div>
+              )}
+              <p className="footer-note">
+                <LockKeyhole size={12} />
+                {auth.user
+                  ? 'Ta collection est sauvegardée dans ton espace privé.'
+                  : 'Le catalogue est public. Connecte-toi pour créer ta collection privée.'}
+              </p>
+            </>
+          ) : null}
+        </div>
+      </main>
+      {catalogDetail && (
+        <CatalogDetail
+          item={catalogDetail}
+          collection={state.media}
+          saving={saving}
+          onClose={() => setCatalogDetail(null)}
+          onAdd={addCatalog}
+          onEdit={(m) => {
+            setCatalogDetail(null);
+            setMediaDialog(m);
+          }}
+        />
+      )}
+      {mediaDialog !== undefined && (
+        <MediaEditor
+          media={mediaDialog}
+          onClose={() => setMediaDialog(undefined)}
+          saving={saving}
+          onSave={async (m) => {
+            const exists = state.media.some((x) => x.id === m.id);
+            if (
+              !exists &&
+              state.media.some(
+                (x) => x.kind === m.kind && x.title.toLocaleLowerCase() === m.title.toLocaleLowerCase(),
+              )
+            ) {
+              toast.error('Ce titre existe déjà dans ta collection.');
+              return false;
+            }
+            const ok = await commit({
+              ...state,
+              media: exists ? state.media.map((x) => (x.id === m.id ? m : x)) : [...state.media, m],
+            });
+            if (ok) {
+              toast.success(exists ? 'Titre mis à jour.' : 'Ajouté à ta collection.');
+              setMediaDialog(undefined);
+            }
+            return ok;
+          }}
+        />
+      )}
+      {sessionDialog && (
+        <SessionEditor
+          state={state}
+          data={sessionDialog}
+          saving={saving}
+          onClose={() => setSessionDialog(null)}
+          onSave={async (s) => {
+            const ok = await commit({
+              ...state,
+              sessions: [...state.sessions.filter((x) => x.id !== s.id), s],
+            });
+            if (ok) {
+              setSessionDialog(null);
+              toast.success('Séance enregistrée.');
+            }
+            return ok;
+          }}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsEditor
+          initial={state.settings}
+          saving={saving}
+          onClose={() => setSettingsOpen(false)}
+          onSave={async (settings) => {
+            if (await commit({ ...state, settings })) {
+              setSettingsOpen(false);
+              toast.success('Préférences enregistrées.');
+            }
+          }}
+        />
+      )}
+      <AlertDialog open={!!deleteMedia} onOpenChange={(open) => !open && setDeleteMedia(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retirer {deleteMedia?.title} ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Le titre et ses séances seront supprimés de ta collection.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Garder le titre</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!canAct}
+              onClick={async (e) => {
+                e.preventDefault();
+                if (
+                  deleteMedia &&
+                  (await commit({
+                    ...state,
+                    media: state.media.filter((m) => m.id !== deleteMedia.id),
+                    sessions: state.sessions.filter((s) => s.mediaId !== deleteMedia.id),
+                  }))
+                ) {
+                  setDeleteMedia(null);
+                  toast.success('Titre retiré.');
+                }
+              }}
+            >
+              Retirer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog open={planPreview !== null} onOpenChange={(open) => !open && setPlanPreview(null)}>
+        <DialogContent className="modal-content">
+          <DialogHeader>
+            <DialogTitle>Ton programme proposé</DialogTitle>
+            <DialogDescription>
+              {planPreview?.length} séances, {planPreview?.reduce((n, s) => n + s.duration, 0)} minutes. Rien
+              n’est ajouté avant ta confirmation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="catalog-results">
+            {planPreview?.map((s) => (
+              <div className="catalog-result" key={s.id}>
+                <CalendarDays size={19} />
+                <span>
+                  {state.media.find((m) => m.id === s.mediaId)?.title}
+                  <small>
+                    {fmtDate(s.date)} · {s.time} · {s.duration} min · {s.from}–{s.to}
+                  </small>
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="form-hint">
+            Total inconnu : une seule unité proposée par titre. Vérifie les épisodes disponibles avant de
+            confirmer.
+          </p>
+          <div className="modal-actions">
+            <button className="secondary" onClick={() => setPlanPreview(null)}>
+              Annuler
+            </button>
+            <button
+              className="primary"
+              disabled={!canAct}
+              onClick={async () => {
+                if (
+                  planPreview &&
+                  (await commit({ ...state, sessions: [...state.sessions, ...planPreview] }))
+                ) {
+                  setPlanPreview(null);
+                  setView('planning');
+                  toast.success('Programme ajouté !');
+                }
+              }}
+            >
+              Ajouter au planning
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </SidebarProvider>
+  );
+}
+function MediaEditor({
+  media,
+  onClose,
+  onSave,
+  saving,
+}: {
+  media: Media | null;
+  onClose: () => void;
+  onSave: (m: Media) => Promise<boolean>;
+  saving: boolean;
+}) {
+  const [m, setM] = useState<Media>(
+    media || {
+      id: '',
+      title: '',
+      kind: 'anime',
+      priority: true,
+      status: 'watching',
+      progress: 0,
+      total: 0,
+      duration: 24,
+      poster: '',
+      sourceUrl: '',
+      notes: '',
+    },
+  );
+  const [term, setTerm] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [searched, setSearched] = useState(false);
+  const [formError, setFormError] = useState('');
+  const requestSeq = useRef(0);
+  const set = <K extends keyof Media>(key: K, value: Media[K]) => setM((old) => ({ ...old, [key]: value }));
+  const search = async () => {
+    if (term.trim().length < 2) return;
+    const seq = ++requestSeq.current;
+    setSearching(true);
+    setSearchError('');
+    try {
+      const r = await fetch(`/api/catalog?kind=${m.kind}&q=${encodeURIComponent(term.trim())}`);
+      const data: any = await r.json();
+      if (seq !== requestSeq.current) return;
+      if (!r.ok) throw new Error(data.error);
+      setResults(data.results);
+      setSearched(true);
+    } catch (e) {
+      if (seq === requestSeq.current)
+        setSearchError(e instanceof Error ? e.message : 'Recherche indisponible.');
+    } finally {
+      if (seq === requestSeq.current) setSearching(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="modal-content">
+        <DialogHeader>
+          <DialogTitle>{media?.id ? 'Modifier le titre' : 'Ajouter à ma collection'}</DialogTitle>
+          <DialogDescription>Note où tu en es pour reprendre au bon endroit.</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setFormError('');
+            if (!m.title.trim()) {
+              setFormError('Ajoute un titre.');
+              return;
+            }
+            if (m.total && m.progress > m.total) {
+              setFormError('La progression ne peut pas dépasser le total.');
+              return;
+            }
+            await onSave({
+              ...m,
+              id: m.id || crypto.randomUUID(),
+              title: m.title.trim(),
+              status: m.total > 0 && m.progress === m.total ? 'completed' : m.status,
+            });
+          }}
+        >
+          <div className="form-grid">
+            <label className="field full-span">
+              <span>Catégorie</span>
+              <Choice
+                value={m.kind}
+                onChange={(v) => {
+                  requestSeq.current++;
+                  setSearching(false);
+                  setResults([]);
+                  setSearched(false);
+                  setSearchError('');
+                  setM((old) => ({
+                    ...old,
+                    kind: v as Kind,
+                    poster: '',
+                    sourceUrl: '',
+                    catalog: undefined,
+                    total: v === 'film' ? 1 : 0,
+                    duration: v === 'manga' ? 10 : v === 'film' ? 120 : v === 'series' ? 45 : 24,
+                  }));
+                }}
+                label="Catégorie du titre"
+                options={kinds}
+              />
+            </label>
+            {!media?.id && m.kind !== 'film' && (
+              <div className="field full-span">
+                <span>Rechercher un titre dans le catalogue</span>
+                <div className="catalog-search">
+                  <input
+                    value={term}
+                    onChange={(e) => setTerm(e.target.value)}
+                    placeholder={m.kind === 'manga' ? 'Ex. One Piece' : 'Ex. Frieren, Solo Leveling…'}
+                    aria-label="Titre à chercher dans le catalogue"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        search();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={searching || term.trim().length < 2}
+                    onClick={search}
+                  >
+                    {searching ? <LoaderCircle className="loading-icon" size={17} /> : <Search size={17} />}
+                  </button>
+                </div>
+                {searchError && (
+                  <p className="form-hint danger" role="status">
+                    {searchError}
+                  </p>
+                )}
+                {searched && !results.length && !searchError && (
+                  <p className="form-hint">Aucun résultat. Tu peux saisir le titre ci-dessous.</p>
+                )}
+                {results.length > 0 && (
+                  <div className="catalog-results">
+                    {results.map((r, i) => (
+                      <button
+                        type="button"
+                        key={i}
+                        className="catalog-result"
+                        onClick={() => {
+                          setM((old) => ({
+                            ...old,
+                            title: r.title,
+                            poster: r.poster,
+                            sourceUrl: r.sourceUrl,
+                            total: r.total,
+                            catalog: r.catalog,
+                            duration: Math.max(1, Math.min(600, r.duration)),
+                          }));
+                          setResults([]);
+                          setSearched(false);
+                        }}
+                      >
+                        {r.poster && <img src={r.poster} alt="" referrerPolicy="no-referrer" />}
+                        <span>
+                          {r.title}
+                          <small>{r.subtitle}</small>
+                        </span>
+                        <Plus size={15} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <span className="form-hint">
+                  {m.kind === 'series' ? (
+                    <a href="https://www.tvmaze.com" target="_blank" rel="noreferrer">
+                      Catalogue : TVmaze · CC BY-SA
+                    </a>
+                  ) : (
+                    <a href="https://jikan.moe" target="_blank" rel="noreferrer">
+                      Catalogue : Jikan / MyAnimeList
+                    </a>
+                  )}{' '}
+                  · ajout manuel toujours possible
+                </span>
+              </div>
+            )}
+            <label className="field full-span">
+              <span>Titre</span>
+              <input
+                value={m.title}
+                maxLength={180}
+                onChange={(e) => set('title', e.target.value)}
+                required
+                placeholder="Le titre de ton anime, manga, film ou série"
+              />
+            </label>
+            <label className="field">
+              <span>Statut</span>
+              <Choice
+                value={m.status}
+                onChange={(v) => set('status', v as Media['status'])}
+                label="Statut"
+                options={statuses}
+              />
+            </label>
+            <label className="field">
+              <span>
+                Minutes par {m.kind === 'manga' ? 'chapitre' : m.kind === 'film' ? 'film' : 'épisode'}
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={600}
+                value={m.duration}
+                onChange={(e) => set('duration', Number(e.target.value))}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>
+                {m.kind === 'manga'
+                  ? 'Dernier chapitre lu'
+                  : m.kind === 'film'
+                    ? 'Déjà vu (0 ou 1)'
+                    : 'Dernier épisode terminé'}
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={m.kind === 'film' ? 1 : 100000}
+                value={m.progress}
+                onChange={(e) => set('progress', Number(e.target.value))}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>{m.kind === 'film' ? 'Total (1 film)' : 'Total à suivre (0 si inconnu)'}</span>
+              <input
+                type="number"
+                min={0}
+                max={100000}
+                value={m.total}
+                onChange={(e) => set('total', Number(e.target.value))}
+                required
+              />
+            </label>
+            <p className="form-hint full-span">
+              Pour une diffusion en cours, indique le nombre d’épisodes déjà disponibles. Pour plusieurs
+              saisons, tu peux créer un titre par saison.
+            </p>
+            <label className="check-line full-span">
+              <Checkbox checked={m.priority} onCheckedChange={(v) => set('priority', v === true)} />
+              <Flame size={16} className="accent-text" />
+              Prioritaire dans mon rattrapage
+            </label>
+            <label className="field full-span">
+              <span>Notes · facultatif</span>
+              <textarea
+                value={m.notes}
+                onChange={(e) => set('notes', e.target.value)}
+                maxLength={2000}
+                placeholder="Saison 2, arrêté en août…"
+              />
+            </label>
+            {m.sourceUrl && (
+              <a className="source-link full-span" href={m.sourceUrl} target="_blank" rel="noreferrer">
+                Voir la fiche du catalogue
+              </a>
+            )}
+          </div>
+          {formError && (
+            <p className="notice danger" role="alert">
+              {formError}
+            </p>
+          )}
+          <div className="modal-actions mt-24">
+            <button type="button" className="secondary" onClick={onClose}>
+              Annuler
+            </button>
+            <button type="submit" className="primary" disabled={saving}>
+              {saving ? <LoaderCircle className="loading-icon" size={16} /> : <Check size={16} />}Enregistrer
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+function SessionEditor({
+  state,
+  data,
+  saving,
+  onClose,
+  onSave,
+}: {
+  state: WatchState;
+  data: { date: string; mediaId?: string; session?: Session };
+  saving: boolean;
+  onClose: () => void;
+  onSave: (s: Session) => Promise<boolean>;
+}) {
+  const chosen = state.media.find((m) => m.id === data.mediaId) || state.media[0];
+  const [id, setId] = useState(chosen?.id || '');
+  const [date, setDate] = useState(data.date);
+  const [time, setTime] = useState(data.session?.time || state.settings.time);
+  const nextFor = (id: string) => {
+    const m = state.media.find((m) => m.id === id);
+    return m
+      ? Math.max(
+          m.progress,
+          ...state.sessions.filter((s) => s.mediaId === id && s.id !== data.session?.id).map((s) => s.to),
+        ) + 1
+      : 1;
+  };
+  const [from, setFrom] = useState(data.session?.from || nextFor(id));
+  const [to, setTo] = useState(data.session?.to || nextFor(id));
+  const [err, setErr] = useState('');
+  const m = state.media.find((m) => m.id === id);
+  const duration = m ? Math.max(0, to - from + 1) * m.duration : 0;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="modal-content">
+        <DialogHeader>
+          <DialogTitle>{data.session ? 'Modifier la séance' : 'Planifier une séance'}</DialogTitle>
+          <DialogDescription>Choisis ton créneau dans le fuseau {state.settings.timezone}.</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setErr('');
+            if (!m || from < 1 || to < from || (m.total > 0 && to > m.total) || duration > 1440) {
+              setErr('Vérifie les épisodes ou chapitres et le total disponible.');
+              return;
+            }
+            const [a, b] = time.split(':').map(Number);
+            const minute = a * 60 + b;
+            if (minute + duration > 1440) {
+              setErr('La séance doit se terminer avant minuit.');
+              return;
+            }
+            const overlap = state.sessions.some((s) => {
+              if (s.date !== date || s.id === data.session?.id) return false;
+              const [h, mi] = s.time.split(':').map(Number);
+              const start = h * 60 + mi;
+              return minute < start + s.duration && minute + duration > start;
+            });
+            if (overlap) {
+              setErr('Une autre séance occupe déjà ce créneau. Choisis une autre heure.');
+              return;
+            }
+            await onSave({
+              id: data.session?.id || crypto.randomUUID(),
+              mediaId: id,
+              date,
+              time,
+              from,
+              to,
+              duration,
+              done: data.session?.done || false,
+            });
+          }}
+        >
+          <div className="form-grid">
+            <label className="field full-span">
+              <span>Titre</span>
+              <Choice
+                value={id}
+                onChange={(v) => {
+                  setId(v);
+                  const n = nextFor(v);
+                  setFrom(n);
+                  setTo(n);
+                }}
+                label="Titre à planifier"
+                options={Object.fromEntries(state.media.map((m) => [m.id, m.title]))}
+              />
+            </label>
+            <label className="field">
+              <span>Jour</span>
+              <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Heure</span>
+              <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Premier {m?.kind === 'manga' ? 'chapitre' : 'épisode / film'}</span>
+              <input
+                type="number"
+                min={1}
+                max={m?.total || 100000}
+                required
+                value={from}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setFrom(n);
+                  if (n > to) setTo(n);
+                }}
+              />
+            </label>
+            <label className="field">
+              <span>Dernier {m?.kind === 'manga' ? 'chapitre' : 'épisode / film'}</span>
+              <input
+                type="number"
+                min={from}
+                max={m?.total || 100000}
+                required
+                value={to}
+                onChange={(e) => setTo(Number(e.target.value))}
+              />
+            </label>
+          </div>
+          <p className="notice">
+            <Clock3 size={15} className="inline mr-2" />
+            {duration} minutes prévues
+            {duration > state.settings.budget
+              ? ` · au-delà de ton objectif de ${state.settings.budget} min`
+              : ''}
+            .
+          </p>
+          {err && (
+            <p className="form-hint danger" role="alert">
+              {err}
+            </p>
+          )}
+          <div className="modal-actions mt-24">
+            <button type="button" className="secondary" onClick={onClose}>
+              Annuler
+            </button>
+            <button type="submit" className="primary" disabled={saving || !m}>
+              <CalendarPlus size={16} />
+              Enregistrer
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+function SettingsEditor({
+  initial,
+  onClose,
+  onSave,
+  saving,
+}: {
+  initial: Settings;
+  onClose: () => void;
+  onSave: (s: Settings) => Promise<void>;
+  saving: boolean;
+}) {
+  const [s, setS] = useState(initial);
+  const [error, setError] = useState('');
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="modal-content">
+        <DialogHeader>
+          <DialogTitle>Mon rythme</DialogTitle>
+          <DialogDescription>
+            Ces préférences servent aux prochains programmes. Les séances existantes gardent leurs horaires.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!s.days.length) {
+              setError('Choisis au moins un jour.');
+              return;
+            }
+            try {
+              new Intl.DateTimeFormat('fr', { timeZone: s.timezone });
+            } catch {
+              setError('Le fuseau horaire est invalide.');
+              return;
+            }
+            onSave(s);
+          }}
+        >
+          <div className="form-grid">
+            <label className="field">
+              <span>Minutes par jour</span>
+              <input
+                type="number"
+                min={15}
+                max={600}
+                required
+                value={s.budget}
+                onChange={(e) => setS({ ...s, budget: Number(e.target.value) })}
+              />
+            </label>
+            <label className="field">
+              <span>Heure habituelle</span>
+              <input
+                type="time"
+                required
+                value={s.time}
+                onChange={(e) => setS({ ...s, time: e.target.value })}
+              />
+            </label>
+            <div className="field full-span">
+              <span>Mes jours disponibles</span>
+              <div className="day-choices">
+                {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+                  <label className="day-choice" key={day}>
+                    <Checkbox
+                      checked={s.days.includes(day)}
+                      onCheckedChange={(v) =>
+                        setS({ ...s, days: v ? [...s.days, day] : s.days.filter((x) => x !== day) })
+                      }
+                    />
+                    {dayNames[day]}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label className="field full-span">
+              <span>Fuseau horaire</span>
+              <Choice
+                value={s.timezone}
+                onChange={(v) => setS({ ...s, timezone: v })}
+                label="Fuseau horaire"
+                options={{
+                  'America/New_York': 'New York / Floride',
+                  'America/Port-au-Prince': 'Port-au-Prince / Haïti',
+                  'America/Chicago': 'Chicago',
+                  'America/Los_Angeles': 'Los Angeles',
+                  'Europe/Paris': 'Paris',
+                  UTC: 'UTC',
+                }}
+              />
+            </label>
+            <label className="check-line full-span">
+              <Switch checked={s.reminders} onCheckedChange={(v) => setS({ ...s, reminders: v })} />
+              Rappels quand l’app est ouverte
+            </label>
+          </div>
+          {error && <p className="notice danger">{error}</p>}
+          <div className="modal-actions mt-24">
+            <button type="button" className="secondary" onClick={onClose}>
+              Annuler
+            </button>
+            <button type="submit" className="primary" disabled={saving}>
+              Enregistrer
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+function Assistant({
+  aiReady,
+  state,
+  onPlanning,
+  expectedUserId,
+}: {
+  aiReady: boolean;
+  state: WatchState;
+  onPlanning: () => void;
+  expectedUserId: string;
+}) {
+  const [key, setKey] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [question, setQuestion] = useState('');
+  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [failed, setFailed] = useState('');
+  const chatEnd = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [messages, busy]);
+  const ask = async (text: string) => {
+    if (!text.trim() || busy) return;
+    if (!aiReady && (!key.trim() || !confirmed)) {
+      setErr('Ajoute ta clé Google AI Studio et confirme que ton projet reste sur le palier gratuit.');
+      return;
+    }
+    setBusy(true);
+    setErr('');
+    setFailed('');
+    const history = messages.slice(-8);
+    try {
+      const r = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, apiKey: key.trim() || undefined, history, expectedUserId }),
+      });
+      const data: any = await r.json();
+      if (!r.ok) throw new Error(data.error || 'L’assistant est indisponible.');
+      setMessages((m) => [...m, { role: 'user', text }, { role: 'model', text: data.text }]);
+      setQuestion('');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'L’assistant est indisponible.');
+      setFailed(text);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="ai-layout">
+      <section className="panel ai-main">
+        {!messages.length ? (
+          <div className="ai-intro">
+            <div className="sparkle-box">
+              <Sparkles size={30} />
+            </div>
+            <h2>Qu’est-ce qu’on regarde ?</h2>
+            <p>
+              Gemini s’appuie sur tes priorités et ta progression pour t’aider à choisir.{' '}
+              {state.settings.budget} minutes aujourd’hui, c’est déjà un bon début.
+            </p>
+            <div className="suggested-prompts">
+              <button
+                disabled={busy}
+                onClick={() =>
+                  ask(
+                    'Aide-moi à rattraper mon retard depuis août avec ma collection et mon temps disponible.',
+                  )
+                }
+              >
+                Organiser mon rattrapage
+              </button>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  ask(
+                    'Recommande-moi trois titres à découvrir d’après ma collection. Explique pourquoi, sans spoiler. Si ma collection est vide, demande-moi mes goûts.',
+                  )
+                }
+              >
+                Trouver ma prochaine histoire
+              </button>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  ask(
+                    'Que me conseilles-tu de regarder ou lire ce soir parmi mes priorités, en respectant mon temps disponible ?',
+                  )
+                }
+              >
+                Choisir pour ce soir
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="chat-list" aria-live="polite">
+            {messages.map((m, i) => (
+              <div className={`chat-message ${m.role}`} key={i}>
+                {m.role === 'model' && <span className="chat-label">GEMINI · AFTERWATCH</span>}
+                {m.text}
+              </div>
+            ))}
+            <div ref={chatEnd} />
+          </div>
+        )}
+        {busy && (
+          <p className="inline-note" role="status">
+            <LoaderCircle size={16} className="loading-icon" />
+            Gemini prépare sa réponse…
+          </p>
+        )}
+        {err && (
+          <div className="notice danger" role="alert">
+            {err}
+            {failed && (
+              <button className="ghost-btn small-btn" disabled={busy} onClick={() => ask(failed)}>
+                Réessayer
+              </button>
+            )}
+          </div>
+        )}
+        <form
+          className="chat-input"
+          onSubmit={(e) => {
+            e.preventDefault();
+            ask(question);
+          }}
+        >
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="J’ai une heure ce soir, aide-moi à choisir…"
+            aria-label="Message pour Gemini"
+            maxLength={2500}
+            rows={2}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                ask(question);
+              }
+            }}
+          />
+          <button className="primary" aria-label="Envoyer à Gemini" disabled={busy || !question.trim()}>
+            <Send size={18} />
+          </button>
+        </form>
+        <p className="form-hint mt-24">
+          Gemini donne des conseils ; il ne modifie pas ta collection. Ses réponses peuvent contenir des
+          erreurs et ne vérifient pas les sorties en direct.
+        </p>
+      </section>
+      <aside className="panel key-panel">
+        <h2>
+          <KeyRound size={19} />
+          {aiReady ? 'Gemini connecté' : 'Connecter Gemini'}
+        </h2>
+        <div className="key-details">
+          {!aiReady ? (
+            <div>
+              <p>
+                Crée une clé dans{' '}
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+                  Google AI Studio
+                </a>{' '}
+                en restant sur un projet sans facturation.
+              </p>
+              <label className="field">
+                <span>Clé API Gemini</span>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  placeholder="Colle ta clé ici"
+                />
+              </label>
+              <p className="form-hint">
+                La clé reste en mémoire dans cet écran et est transmise à Google pour répondre. Elle n’est ni
+                sauvegardée ni incluse dans le code.
+              </p>
+              <label className="check-line">
+                <Checkbox checked={confirmed} onCheckedChange={(v) => setConfirmed(v === true)} />
+                <span className="form-hint">
+                  Mon projet Google utilise le palier gratuit, sans facturation activée.
+                </span>
+              </label>
+            </div>
+          ) : (
+            <p>La connexion Gemini est configurée pour cet espace.</p>
+          )}
+          <div>
+            <div className="notice">
+              Gemini 2.5 Flash dispose d’un palier gratuit soumis à quotas. Si la limite est atteinte,
+              réessaie plus tard. Aucun basculement automatique vers un modèle payant.
+            </div>
+            <p>
+              Ta question, les titres et la progression de ta collection sont envoyés à Google. Le palier
+              gratuit peut utiliser ces données pour améliorer ses services.
+            </p>
+            <a
+              className="form-hint"
+              href="https://ai.google.dev/gemini-api/docs/pricing"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Consulter les conditions et quotas Google
+            </a>
+            <div className="divider mt-24" />
+            <p>Tu peux aussi préparer ton programme sans utiliser l’IA.</p>
+            <button className="secondary full" onClick={onPlanning}>
+              <CalendarDays size={16} />
+              Planning automatique
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
 }

@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint app lib hooks tests proxy.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types tests/auth-security.test.mjs && node tests/catalog.mjs"
+    "test": "node --experimental-strip-types tests/auth-security.test.mjs && node tests/catalog.mjs",
+    "format": "prettier --write app lib hooks tests proxy.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -47,6 +48,7 @@
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",
+    "prettier": "3.9.9",
     "tailwindcss": "4.2.1",
     "tw-animate-css": "^1.4.0",
     "typescript": "5.9.3"
