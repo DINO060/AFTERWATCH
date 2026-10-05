@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { messages, type Lang } from './i18n';
 import { defaults, type WatchState } from './watch';
 export { assertSameOrigin as sameOrigin } from './auth-origin';
+// Custom issues carry a key of messages.*.api.validation, translated by errorResponse.
+type ValidationKey = keyof (typeof messages)['fr']['api']['validation'];
+const issue = (key: ValidationKey) => key;
 const imageUrl = z
   .string()
   .max(2000)
@@ -51,7 +55,7 @@ const mediaSchema = z
       })
       .optional(),
   })
-  .refine((m) => m.total === 0 || m.progress <= m.total, { message: 'La progression dépasse le total.' });
+  .refine((m) => m.total === 0 || m.progress <= m.total, { message: issue('progressOverTotal') });
 const date = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -102,11 +106,11 @@ export const stateSchema = z
       new Set(s.media.map((m) => m.id)).size !== s.media.length ||
       new Set(s.sessions.map((m) => m.id)).size !== s.sessions.length
     )
-      ctx.addIssue({ code: 'custom', message: 'Identifiant en double.' });
+      ctx.addIssue({ code: 'custom', message: issue('duplicateId') });
     for (const session of s.sessions) {
       const m = s.media.find((x) => x.id === session.mediaId);
       if (!m || (m.total > 0 && session.to > m.total))
-        ctx.addIssue({ code: 'custom', message: 'Séance incohérente avec le titre.' });
+        ctx.addIssue({ code: 'custom', message: issue('sessionMismatch') });
     }
   });
 export async function readState(
@@ -132,23 +136,21 @@ export async function saveState(
   if (error) throw new Error('Collection save failed');
   return data;
 }
-export function errorResponse(e: unknown) {
+export function errorResponse(e: unknown, lang: Lang) {
   const headers = { 'Cache-Control': 'private, no-store' };
+  const t = messages[lang].api;
   if (e instanceof Response) {
     e.headers.set('Cache-Control', 'private, no-store');
     return e;
   }
-  if (e instanceof z.ZodError)
-    return Response.json(
-      { error: e.issues[0]?.message || 'Informations invalides.' },
-      { status: 400, headers },
-    );
-  if (e instanceof SyntaxError)
-    return Response.json({ error: 'Informations invalides.' }, { status: 400, headers });
+  if (e instanceof z.ZodError) {
+    // Zod's built-in messages are English-only; show our own text or a generic one.
+    const key = e.issues[0]?.message;
+    const error = key && key in t.validation ? t.validation[key as ValidationKey] : t.invalid;
+    return Response.json({ error }, { status: 400, headers });
+  }
+  if (e instanceof SyntaxError) return Response.json({ error: t.invalid }, { status: 400, headers });
   console.error('Afterwatch operation failed', e instanceof Error ? e.message : 'unknown');
-  return Response.json(
-    { error: 'Impossible de sauvegarder pour le moment. Tes modifications restent affichées ; réessaie.' },
-    { status: 503, headers },
-  );
+  return Response.json({ error: t.saveUnavailable }, { status: 503, headers });
 }
 export const aiEnv = () => ({ GEMINI_API_KEY: process.env.GEMINI_API_KEY });

@@ -12,7 +12,6 @@ import {
   RefreshCw,
   LoaderCircle,
   ExternalLink,
-  Clock3,
   Flame,
   ChevronLeft,
   ChevronRight,
@@ -23,23 +22,42 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
 import { type Kind, type Media } from '@/lib/watch';
-import { type CatalogItem, type CatalogPage, sameTitle, countLabel } from '@/lib/catalog';
+import { type CatalogItem, type CatalogPage, sameTitle } from '@/lib/catalog';
+import type { Messages } from '@/lib/i18n';
+import { useI18n } from './i18n-provider';
 const categories = [
-  { key: 'anime', name: 'Anime', icon: Clapperboard },
-  { key: 'manga', name: 'Mangas', icon: BookOpen },
-  { key: 'film', name: 'Films', icon: Film },
-  { key: 'series', name: 'Séries', icon: LibraryBig },
+  { key: 'anime', icon: Clapperboard },
+  { key: 'manga', icon: BookOpen },
+  { key: 'film', icon: Film },
+  { key: 'series', icon: LibraryBig },
 ] as const;
-import { loadCatalog, loadDetail as loadCatalogDetail } from '@/lib/catalog-client';
+import { loadCatalog, loadDetail as loadCatalogDetail, catalogErrorText } from '@/lib/catalog-client';
 export { loadDetail as loadCatalogDetail } from '@/lib/catalog-client';
+
+/** Source values (English or French) shown in the interface language when known. */
+const translated = (map: Record<string, string>, value: string) => map[value] || value;
+
+export function countLabel(item: CatalogItem, t: Messages) {
+  const c = item.catalog;
+  if (item.kind === 'film') return c.durationKnown ? `${item.duration} min` : t.catalog.filmCount;
+  if (item.kind === 'manga')
+    return c.chapters !== null
+      ? t.catalog.chapterCount(c.chapters)
+      : c.volumes !== null
+        ? t.catalog.volumeCount(c.volumes)
+        : t.catalog.chaptersUnknown;
+  if (c.episodes !== null) return t.catalog.episodeCount(c.episodes);
+  return c.seasons !== null ? t.catalog.seasonCount(c.seasons) : t.catalog.episodesSeeDetails;
+}
 export function CatalogPoster({ item, className = '' }: { item: CatalogItem; className?: string }) {
+  const { t } = useI18n();
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [item.poster]);
   return item.poster && !failed ? (
     <img
       className={className}
       src={item.poster}
-      alt={`Couverture de ${item.title}`}
+      alt={t.catalog.coverOf(item.title)}
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
@@ -47,51 +65,34 @@ export function CatalogPoster({ item, className = '' }: { item: CatalogItem; cla
   ) : (
     <div className={`catalog-no-cover ${className}`}>
       <BookOpen size={32} />
-      <span>Affiche indisponible</span>
+      <span>{t.catalog.noCover}</span>
     </div>
   );
 }
-function facts(item: CatalogItem) {
+function facts(item: CatalogItem, t: Messages) {
   const c = item.catalog;
-  const rows: { label: string; value: string }[] = [];
-  if (item.kind === 'anime' || item.kind === 'series')
-    rows.push({
-      label: 'Épisodes répertoriés',
-      value: c.episodes === null ? 'Non renseigné' : String(c.episodes),
-    });
-  if (item.kind === 'manga')
-    rows.push(
-      { label: 'Chapitres', value: c.chapters === null ? 'Non renseigné' : String(c.chapters) },
-      { label: 'Tomes', value: c.volumes === null ? 'Non renseigné' : String(c.volumes) },
-    );
-  if (item.kind === 'series')
-    rows.push({ label: 'Saisons', value: c.seasons === null ? 'Non renseigné' : String(c.seasons) });
+  const rows: { label: string; value: string; unknown: boolean }[] = [];
+  const count = (label: string, value: number | null) =>
+    rows.push({ label, value: value === null ? t.catalog.unknown : String(value), unknown: value === null });
+  if (item.kind === 'anime' || item.kind === 'series') count(t.catalog.episodesListed, c.episodes);
+  if (item.kind === 'manga') {
+    count(t.catalog.chapters, c.chapters);
+    count(t.catalog.volumes, c.volumes);
+  }
+  if (item.kind === 'series') count(t.catalog.seasons, c.seasons);
   if (item.kind !== 'manga')
     rows.push({
-      label: item.kind === 'film' ? 'Durée' : 'Durée d’un épisode',
-      value: c.durationKnown ? `${item.duration} min` : 'Non renseignée',
+      label: item.kind === 'film' ? t.catalog.runtime : t.catalog.episodeLength,
+      value: c.durationKnown ? `${item.duration} min` : t.catalog.unknown,
+      unknown: !c.durationKnown,
     });
   if (c.available !== null && item.kind !== 'film')
-    rows.push({ label: 'Épisodes déjà diffusés', value: String(c.available) });
+    rows.push({ label: t.catalog.aired, value: String(c.available), unknown: false });
   if (c.releaseStatus)
     rows.push({
-      label: 'Statut de sortie',
-      value:
-        (
-          {
-            'Finished Airing': 'Diffusion terminée',
-            'Currently Airing': 'En cours de diffusion',
-            'Not yet aired': 'À venir',
-            Finished: 'Publication terminée',
-            Publishing: 'En cours de publication',
-            'On Hiatus': 'En pause',
-            Discontinued: 'Interrompu',
-            'Not yet published': 'À paraître',
-            Running: 'En cours',
-            Ended: 'Terminé',
-            'To Be Determined': 'À confirmer',
-          } as Record<string, string>
-        )[c.releaseStatus] || c.releaseStatus,
+      label: t.catalog.releaseStatus,
+      value: translated(t.catalog.releaseStatuses, c.releaseStatus),
+      unknown: false,
     });
   return rows;
 }
@@ -110,9 +111,10 @@ export function CatalogDetail({
   onAdd: (i: CatalogItem, priority: boolean) => Promise<boolean>;
   onEdit: (m: Media) => void;
 }) {
+  const { t } = useI18n();
   const [detail, setDetail] = useState(item);
   const [loading, setLoading] = useState(!!item.catalog.id);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const [adding, setAdding] = useState(false);
   const [priority, setPriority] = useState(false);
@@ -121,12 +123,12 @@ export function CatalogDetail({
     const controller = new AbortController();
     setLoading(!!item.catalog.id);
     setDetail(item);
-    setError('');
+    setError(null);
     if (!item.catalog.id) return;
     loadCatalogDetail(item, controller.signal)
       .then(setDetail)
       .catch((e) => {
-        if (!controller.signal.aborted) setError(e.message);
+        if (!controller.signal.aborted) setError(e);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -145,20 +147,19 @@ export function CatalogDetail({
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="catalog-detail-sheet">
         <SheetHeader className="catalog-detail-heading">
-          <SheetTitle>Fiche du titre</SheetTitle>
-          <SheetDescription>Les informations du catalogue, avant de choisir.</SheetDescription>
+          <SheetTitle>{t.catalog.detailTitle}</SheetTitle>
+          <SheetDescription>{t.catalog.detailDescription}</SheetDescription>
         </SheetHeader>
         <div className="catalog-detail-scroll">
           <div className="catalog-detail-hero">
             <CatalogPoster item={detail} />
             <div>
               <p className="eyebrow">
-                {categories.find((c) => c.key === detail.kind)?.name}{' '}
-                {detail.catalog.year && `/ ${detail.catalog.year}`}
+                {t.kindsPlural[detail.kind]} {detail.catalog.year && `/ ${detail.catalog.year}`}
               </p>
               <h2>{detail.title}</h2>
               <div className="catalog-detail-tags">
-                {detail.catalog.format && <span>{detail.catalog.format}</span>}
+                {detail.catalog.format && <span>{translated(t.catalog.formats, detail.catalog.format)}</span>}
                 {detail.catalog.score !== null && (
                   <span className="catalog-score">
                     <Star size={14} fill="currentColor" />
@@ -166,27 +167,23 @@ export function CatalogDetail({
                   </span>
                 )}
               </div>
-              <p className="subdued">{countLabel(detail)}</p>
+              <p className="subdued">{countLabel(detail, t)}</p>
             </div>
           </div>
-          {error && (
+          {error !== null && (
             <div className="notice danger" role="status">
-              {error} {detail.catalog.synopsis ? 'Les informations déjà reçues restent affichées.' : ''}
+              {catalogErrorText(error, t)} {detail.catalog.synopsis ? t.catalog.keptInfo : ''}
               <button className="ghost-btn small-btn" onClick={() => setRetry((n) => n + 1)}>
                 <RefreshCw size={14} />
-                Réessayer
+                {t.common.retry}
               </button>
             </div>
           )}
           <div className="catalog-facts" aria-busy={loading}>
-            {facts(detail).map((f) => (
+            {facts(detail, t).map((f) => (
               <div key={f.label}>
                 <span>{f.label}</span>
-                {loading && f.value.startsWith('Non renseign') ? (
-                  <Skeleton className="h-5 w-16" />
-                ) : (
-                  <strong>{f.value}</strong>
-                )}
+                {loading && f.unknown ? <Skeleton className="h-5 w-16" /> : <strong>{f.value}</strong>}
               </div>
             ))}
           </div>
@@ -198,7 +195,7 @@ export function CatalogDetail({
             </div>
           )}
           <section className="catalog-synopsis">
-            <h3>Synopsis</h3>
+            <h3>{t.catalog.synopsis}</h3>
             {loading && !detail.catalog.synopsis ? (
               <div className="loading-grid">
                 <Skeleton className="h-4 w-full" />
@@ -206,15 +203,13 @@ export function CatalogDetail({
                 <Skeleton className="h-4 w-4/5" />
               </div>
             ) : (
-              <p>
-                {detail.catalog.synopsis || 'Le catalogue ne fournit pas encore de synopsis pour ce titre.'}
-              </p>
+              <p>{detail.catalog.synopsis || t.catalog.noSynopsis}</p>
             )}
-            <small>Texte fourni dans la langue du catalogue.</small>
+            <small>{t.catalog.synopsisLanguage}</small>
           </section>
           <div className="catalog-attribution">
             <span>
-              Source :{' '}
+              {t.catalog.source}{' '}
               {detail.catalog.source === 'kitsu'
                 ? 'Kitsu'
                 : detail.catalog.source === 'jikan'
@@ -226,17 +221,14 @@ export function CatalogDetail({
             {detail.sourceUrl && (
               <a href={detail.sourceUrl} target="_blank" rel="noreferrer">
                 <ExternalLink size={13} />
-                Voir la source
+                {t.catalog.viewSource}
               </a>
             )}
           </div>
           {detail.catalog.available !== null &&
             detail.catalog.episodes !== null &&
             detail.catalog.available < detail.catalog.episodes && (
-              <p className="form-hint">
-                Le total peut inclure des épisodes à venir. Seuls les épisodes déjà diffusés sont proposés
-                dans le planning automatique.
-              </p>
+              <p className="form-hint">{t.catalog.upcomingHint}</p>
             )}
         </div>
         <div className="catalog-detail-footer">
@@ -244,10 +236,10 @@ export function CatalogDetail({
             <>
               <p className="inline-note">
                 <Check size={17} />
-                Déjà dans ta collection · {current.priority ? 'Prioritaire' : 'Non prioritaire'}
+                {t.catalog.alreadyIn(current.priority)}
               </p>
               <button className="primary full" onClick={() => onEdit(current)}>
-                Régler ma progression
+                {t.catalog.setProgress}
               </button>
             </>
           ) : (
@@ -258,13 +250,13 @@ export function CatalogDetail({
                 onClick={() => setPriority((p) => !p)}
               >
                 <Flame size={17} />
-                {priority ? 'Prioritaire dans mon rattrapage' : 'Rendre ce titre prioritaire'}
+                {priority ? t.mediaEditor.priority : t.catalog.makePriority}
               </button>
               <button className="primary full" disabled={saving || loading || adding} onClick={add}>
-                {adding ? <LoaderCircle size={17} className="loading-icon" /> : <Plus size={17} />}Ajouter à
-                ma liste
+                {adding ? <LoaderCircle size={17} className="loading-icon" /> : <Plus size={17} />}
+                {t.catalog.addToList}
               </button>
-              <p className="form-hint">Tu pourras ensuite indiquer où tu t’es arrêté.</p>
+              <p className="form-hint">{t.catalog.laterHint}</p>
             </>
           )}
         </div>
@@ -285,13 +277,14 @@ export default function CatalogBrowser({
   onDetail: (item: CatalogItem) => void;
   onManual: () => void;
 }) {
+  const { t, locale } = useI18n();
   const [kind, setKind] = useState<Kind>('anime');
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [data, setData] = useState<CatalogPage | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const [busyId, setBusyId] = useState('');
   const cache = useRef(new Map<string, CatalogPage>());
@@ -300,7 +293,7 @@ export default function CatalogBrowser({
     const params = new URLSearchParams({ kind, page: String(page), q: search });
     const key = params.toString();
     const saved = cache.current.get(key);
-    setError('');
+    setError(null);
     if (saved && !retry) {
       setData(saved);
       setLoading(false);
@@ -316,7 +309,7 @@ export default function CatalogBrowser({
         cache.current.set(key, result);
       })
       .catch((e) => {
-        if (!c.signal.aborted) setError(e.message);
+        if (!c.signal.aborted) setError(e);
       })
       .finally(() => {
         if (!c.signal.aborted) setLoading(false);
@@ -348,11 +341,11 @@ export default function CatalogBrowser({
   return (
     <section className="catalog-browser">
       <Tabs value={kind} onValueChange={changeKind} className="catalog-tabs">
-        <TabsList aria-label="Catégories du catalogue">
-          {categories.map(({ key, name, icon: Icon }) => (
+        <TabsList aria-label={t.catalog.categoriesAria}>
+          {categories.map(({ key, icon: Icon }) => (
             <TabsTrigger value={key} key={key}>
               <Icon size={18} />
-              {name}
+              {t.kindsPlural[key]}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -363,29 +356,25 @@ export default function CatalogBrowser({
           value={query}
           maxLength={150}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="Rechercher dans le catalogue"
-          placeholder={`Rechercher ${kind === 'anime' ? 'un anime' : kind === 'manga' ? 'un manga' : kind === 'film' ? 'un film' : 'une série'}…`}
+          aria-label={t.catalog.searchAria}
+          placeholder={t.catalog.searchPlaceholders[kind]}
         />
         <button className="primary" disabled={loading && search === query.trim()} type="submit">
-          Rechercher
+          {t.catalog.search}
         </button>
       </form>
       <div className="catalog-section-heading">
         <div>
           <h2>
             {search
-              ? `Résultats pour « ${search} »`
+              ? t.catalog.resultsFor(search)
               : kind === 'series'
-                ? 'Séries à découvrir'
+                ? t.catalog.headingSeries
                 : kind === 'film'
-                  ? 'Le cinéma, à portée de liste'
-                  : 'Les incontournables'}
+                  ? t.catalog.headingFilm
+                  : t.catalog.headingDefault}
           </h2>
-          <p>
-            {search
-              ? 'Choisis une affiche pour consulter sa fiche.'
-              : 'Explore le catalogue et garde les titres qui te donnent envie.'}
-          </p>
+          <p>{search ? t.catalog.pickCover : t.catalog.explore}</p>
         </div>
         {search && (
           <button
@@ -396,12 +385,12 @@ export default function CatalogBrowser({
               setPage(1);
             }}
           >
-            Effacer la recherche
+            {t.catalog.clearSearch}
           </button>
         )}
       </div>
       {loading ? (
-        <div className="catalog-grid" aria-label="Chargement des couvertures">
+        <div className="catalog-grid" aria-label={t.catalog.loadingCovers}>
           {Array.from({ length: 12 }, (_, i) => (
             <div key={i}>
               <Skeleton className="catalog-poster-skeleton" />
@@ -410,17 +399,17 @@ export default function CatalogBrowser({
             </div>
           ))}
         </div>
-      ) : error ? (
+      ) : error !== null ? (
         <div className="catalog-error" role="alert">
           <RefreshCw size={30} />
-          <h3>Le catalogue prend une pause.</h3>
-          <p>{error}</p>
+          <h3>{t.catalog.paused}</h3>
+          <p>{catalogErrorText(error, t)}</p>
           <button className="secondary" onClick={() => setRetry((n) => n + 1)}>
             <RefreshCw size={16} />
-            Réessayer
+            {t.common.retry}
           </button>
           <button className="ghost-btn" onClick={onManual}>
-            Ajouter exceptionnellement un titre à la main
+            {t.catalog.addManuallyInstead}
           </button>
         </div>
       ) : data?.results.length ? (
@@ -434,7 +423,7 @@ export default function CatalogBrowser({
                   <button
                     className="catalog-cover-button"
                     onClick={() => onDetail(item)}
-                    aria-label={`Voir la fiche de ${item.title}`}
+                    aria-label={t.media.viewDetailsOf(item.title)}
                   >
                     <CatalogPoster item={item} />
                     {item.catalog.score !== null && (
@@ -446,7 +435,7 @@ export default function CatalogBrowser({
                     {added && (
                       <span className="cover-added">
                         <Check size={13} />
-                        Dans ma liste
+                        {t.catalog.inMyList}
                       </span>
                     )}
                   </button>
@@ -455,10 +444,14 @@ export default function CatalogBrowser({
                       {item.title}
                     </button>
                     <p>
-                      {[item.catalog.year, item.catalog.format].filter(Boolean).join(' · ') ||
-                        categories.find((c) => c.key === kind)?.name}
+                      {[
+                        item.catalog.year,
+                        item.catalog.format && translated(t.catalog.formats, item.catalog.format),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || t.kindsPlural[kind]}
                     </p>
-                    <span className="catalog-count">{countLabel(item)}</span>
+                    <span className="catalog-count">{countLabel(item, t)}</span>
                     <button
                       className={`catalog-add-button ${added ? 'added' : ''}`}
                       disabled={added || saving || !!busyId}
@@ -471,7 +464,7 @@ export default function CatalogBrowser({
                       ) : (
                         <Plus size={15} />
                       )}{' '}
-                      {added ? 'Dans ma liste' : 'Ma liste'}
+                      {added ? t.catalog.inMyList : t.catalog.myList}
                     </button>
                   </div>
                 </article>
@@ -481,11 +474,11 @@ export default function CatalogBrowser({
           <div className="catalog-pagination-row">
             <span className="form-hint">
               {data.totalResults !== null
-                ? `${data.totalResults.toLocaleString('fr-FR')} titres trouvés`
-                : `Source : ${data.source}`}{' '}
-              · page {page}
+                ? t.catalog.titlesFound(data.totalResults.toLocaleString(locale))
+                : t.catalog.sourceLine(data.source)}{' '}
+              · {t.catalog.page(page)}
             </span>
-            <Pagination aria-label="Pages du catalogue">
+            <Pagination aria-label={t.catalog.pagesAria}>
               <PaginationContent>
                 <PaginationItem>
                   <button
@@ -494,7 +487,7 @@ export default function CatalogBrowser({
                     onClick={() => setPage((p) => p - 1)}
                   >
                     <ChevronLeft size={15} />
-                    Précédente
+                    {t.catalog.previous}
                   </button>
                 </PaginationItem>
                 <PaginationItem>
@@ -508,7 +501,7 @@ export default function CatalogBrowser({
                     disabled={!data.hasNext}
                     onClick={() => setPage((p) => p + 1)}
                   >
-                    Suivante
+                    {t.catalog.next}
                     <ChevronRight size={15} />
                   </button>
                 </PaginationItem>
@@ -520,19 +513,17 @@ export default function CatalogBrowser({
         <Empty className="catalog-empty">
           <EmptyHeader>
             <Search size={30} />
-            <EmptyTitle>Aucun titre trouvé</EmptyTitle>
-            <EmptyDescription>
-              Essaie le titre original, une autre orthographe ou une autre catégorie.
-            </EmptyDescription>
+            <EmptyTitle>{t.catalog.noneFound}</EmptyTitle>
+            <EmptyDescription>{t.catalog.noneFoundHint}</EmptyDescription>
           </EmptyHeader>
           <button className="secondary" onClick={onManual}>
-            Ajouter un titre manuellement
+            {t.catalog.addManually}
           </button>
         </Empty>
       )}
       <div className="catalog-bottom-note">
         <p>
-          Sources :{' '}
+          {t.catalog.sources}{' '}
           <a href="https://kitsu.app" target="_blank" rel="noreferrer">
             Kitsu
           </a>
@@ -548,10 +539,10 @@ export default function CatalogBrowser({
           <a href="https://www.stremio.com" target="_blank" rel="noreferrer">
             Cinemeta
           </a>
-          . Les fiches et compteurs dépendent des informations disponibles dans ces catalogues.
+          . {t.catalog.sourcesNote}
         </p>
         <button className="ghost-btn small-btn" onClick={onManual}>
-          Titre introuvable ? Ajout manuel
+          {t.catalog.notFoundManual}
         </button>
       </div>
     </section>

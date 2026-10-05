@@ -13,12 +13,9 @@ export async function catalogJson(url: string): Promise<any> {
     });
     if (!response.ok) {
       console.warn('catalog_upstream', { host, status: response.status });
-      throw new CatalogFailure(
-        response.status === 429
-          ? 'Le catalogue limite les recherches. Réessaie dans une minute.'
-          : 'La source du catalogue est momentanément indisponible.',
-        response.status === 429 ? 429 : 503,
-      );
+      throw response.status === 429
+        ? new CatalogFailure('rateLimited', 429)
+        : new CatalogFailure('sourceDown', 503);
     }
     const value: any = await response.json();
     if (memo.size >= 80) memo.delete(memo.keys().next().value!);
@@ -27,9 +24,7 @@ export async function catalogJson(url: string): Promise<any> {
   } catch (e) {
     if (!(e instanceof CatalogFailure))
       console.warn('catalog_upstream', { host, reason: e instanceof Error ? e.name : 'network' });
-    throw e instanceof CatalogFailure
-      ? e
-      : new CatalogFailure('La source du catalogue met trop de temps à répondre.');
+    throw e instanceof CatalogFailure ? e : new CatalogFailure('sourceSlow');
   }
 }
 export const browseCatalog = (kind: Kind, query: string, page: number) =>

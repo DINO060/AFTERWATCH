@@ -24,13 +24,12 @@ import {
   KeyRound,
   LoaderCircle,
   RefreshCw,
-  CheckCheck,
   Film,
   CalendarPlus,
   X,
-  WifiOff,
   Compass,
   Info,
+  Languages,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -72,9 +71,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import {
   defaults,
-  kinds,
-  unit,
-  localDate,
+  kindKeys,
   dayPlus,
   planWeek,
   completeSession,
@@ -89,19 +86,22 @@ import CatalogBrowser, { CatalogDetail } from './catalog-browser';
 import { type CatalogItem, mediaFromCatalog, sameTitle, itemFromMedia } from '@/lib/catalog';
 import AuthPanel, { type AccountUser, type AuthStatus } from './auth-panel';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
-const statuses = { watching: 'En cours', later: 'À commencer', paused: 'En pause', completed: 'Terminé' };
-const nav = [
-  { id: 'catalog', name: 'Catalogue', icon: Compass },
-  { id: 'today', name: 'Aujourd’hui', icon: Play },
-  { id: 'collection', name: 'Ma collection', icon: Layers3 },
-  { id: 'planning', name: 'Mon planning', icon: CalendarDays },
-  { id: 'assistant', name: 'Assistant Gemini', icon: Sparkles },
-  { id: 'reminders', name: 'Rappels', icon: Bell },
-  { id: 'account', name: 'Mon compte', icon: KeyRound },
+import { useI18n } from './i18n-provider';
+type View = 'catalog' | 'today' | 'collection' | 'planning' | 'assistant' | 'reminders' | 'account';
+const nav: { id: View; icon: typeof Play }[] = [
+  { id: 'catalog', icon: Compass },
+  { id: 'today', icon: Play },
+  { id: 'collection', icon: Layers3 },
+  { id: 'planning', icon: CalendarDays },
+  { id: 'assistant', icon: Sparkles },
+  { id: 'reminders', icon: Bell },
+  { id: 'account', icon: KeyRound },
 ];
-const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-const fmtDate = (date: string, options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' }) =>
-  new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', options);
+const formatDate = (
+  locale: string,
+  date: string,
+  options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' },
+) => new Date(date + 'T12:00:00').toLocaleDateString(locale, options);
 function zonedNow(zone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: zone,
@@ -147,12 +147,13 @@ function AppNavigation({
   priority,
   user,
 }: {
-  view: string;
-  setView: (v: string) => void;
+  view: View;
+  setView: (v: View) => void;
   priority: number;
   user: AccountUser | null;
 }) {
   const { setOpenMobile } = useSidebar();
+  const { t } = useI18n();
   return (
     <Sidebar>
       <SidebarHeader>
@@ -164,9 +165,9 @@ function AppNavigation({
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <p className="nav-caption">TON ESPACE</p>
+        <p className="nav-caption">{t.nav.caption}</p>
         <SidebarMenu>
-          {nav.map(({ id, name, icon: Icon }) => (
+          {nav.map(({ id, icon: Icon }) => (
             <SidebarMenuItem key={id}>
               <SidebarMenuButton
                 onClick={() => {
@@ -177,7 +178,7 @@ function AppNavigation({
                 className="nav-link"
               >
                 <Icon />
-                <span>{name}</span>
+                <span>{t.nav[id]}</span>
                 {id === 'collection' && priority > 0 && <span className="nav-count">{priority}</span>}
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -185,11 +186,11 @@ function AppNavigation({
         </SidebarMenu>
         <div className="sidebar-note">
           <Moon size={21} />
-          <strong>Pas besoin de tout rattraper.</strong>
+          <strong>{t.nav.noteTitle}</strong>
           <p>
-            Choisis ce qui te plaît.
+            {t.nav.noteLine1}
             <br />
-            Le reste peut attendre.
+            {t.nav.noteLine2}
           </p>
         </div>
       </SidebarContent>
@@ -203,8 +204,8 @@ function AppNavigation({
         >
           <span className="avatar">{user?.displayName.slice(0, 1).toUpperCase() || 'A'}</span>
           <div>
-            {user?.displayName || 'Mode découverte'}
-            <small>{user ? 'Mon compte' : 'Se connecter'}</small>
+            {user?.displayName || t.nav.browsing}
+            <small>{user ? t.nav.account : t.nav.signIn}</small>
           </div>
         </button>
       </SidebarFooter>
@@ -251,6 +252,13 @@ function MediaImage({ media, className }: { media: Media; className?: string }) 
   );
 }
 export default function WatchApp() {
+  const { t, lang, locale, setLang } = useI18n();
+  // load() is an effect dependency: read the texts through a ref so a language switch does not refetch.
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+  const fmtDate = (date: string, options?: Intl.DateTimeFormatOptions) => formatDate(locale, date, options);
   const [auth, setAuth] = useState<AuthStatus>({
     user: null,
     configured: false,
@@ -266,7 +274,7 @@ export default function WatchApp() {
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [aiReady, setAiReady] = useState(false);
-  const [view, setView] = useState('catalog');
+  const [view, setView] = useState<View>('catalog');
   const [catalogDetail, setCatalogDetail] = useState<CatalogItem | null>(null);
   const [filter, setFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -290,7 +298,7 @@ export default function WatchApp() {
       setLoaded(false);
       const accountResponse = await fetch('/api/auth/user', { cache: 'no-store' });
       const account: AuthStatus & { error?: string } = await accountResponse.json();
-      if (!accountResponse.ok) throw new Error(account.error || 'Impossible de vérifier ta connexion.');
+      if (!accountResponse.ok) throw new Error(account.error || tRef.current.app.verifyFailed);
       authUserId.current = account.user?.id || null;
       setAuth(account);
       setAuthChecked(true);
@@ -310,7 +318,7 @@ export default function WatchApp() {
         setAiReady(false);
         return;
       }
-      if (!r.ok) throw new Error(data.error || 'Chargement impossible.');
+      if (!r.ok) throw new Error(data.error || tRef.current.app.loadFailed);
       if (data.userId !== account.user.id) {
         window.location.reload();
         return;
@@ -321,7 +329,7 @@ export default function WatchApp() {
       setLoaded(true);
     } catch (e) {
       setAuthChecked(true);
-      setError(e instanceof Error ? e.message : 'Connexion indisponible.');
+      setError(e instanceof Error ? e.message : tRef.current.common.connectionUnavailable);
     }
   }, []);
   useEffect(() => {
@@ -360,7 +368,7 @@ export default function WatchApp() {
     async (next: WatchState) => {
       if (!auth.user) {
         setView('account');
-        toast.info('Connecte-toi pour enregistrer ta collection.');
+        toast.info(t.app.signInToSave);
         return false;
       }
       if (savingRef.current || !loaded) return false;
@@ -377,13 +385,13 @@ export default function WatchApp() {
           window.location.reload();
           return false;
         }
-        if (!r.ok) throw new Error(data.error || 'Sauvegarde impossible.');
+        if (!r.ok) throw new Error(data.error || t.app.saveFailed);
         setState(next);
         setRevision(data.revision);
         setError('');
         return true;
       } catch (e) {
-        const message = e instanceof Error ? e.message : 'Connexion indisponible.';
+        const message = e instanceof Error ? e.message : t.common.connectionUnavailable;
         setError(message);
         toast.error(message);
         return false;
@@ -392,7 +400,7 @@ export default function WatchApp() {
         setSaving(false);
       }
     },
-    [revision, loaded, auth.user],
+    [revision, loaded, auth.user, t],
   );
   useEffect(() => {
     const tick = () => setNow(zonedNow(state.settings.timezone));
@@ -422,8 +430,8 @@ export default function WatchApp() {
         const m = state.media.find((m) => m.id === s.mediaId);
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
-            new Notification('Afterwatch · C’est l’heure', {
-              body: m ? `${m.title} · ${s.duration} min` : 'Ta séance t’attend.',
+            new Notification(t.reminder.notificationTitle, {
+              body: m ? `${m.title} · ${s.duration} min` : t.reminder.notificationFallback,
               icon: '/favicon.svg',
               tag,
             });
@@ -432,7 +440,7 @@ export default function WatchApp() {
         break;
       }
     }
-  }, [now, state, loaded]);
+  }, [now, state, loaded, t]);
   useEffect(() => {
     const context = (document as any).modelContext;
     if (!context?.registerTool) return;
@@ -440,8 +448,8 @@ export default function WatchApp() {
     const tools = [
       {
         name: 'read_watch_collection',
-        title: 'Lire la collection',
-        description: 'Lire les titres et séances sauvegardés de la collection Afterwatch.',
+        title: t.agentTools.readTitle,
+        description: t.agentTools.readDescription,
         inputSchema: { type: 'object', properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: (input: unknown) => {
@@ -453,8 +461,8 @@ export default function WatchApp() {
       },
       {
         name: 'start_adding_watch_title',
-        title: 'Préparer l’ajout d’un titre',
-        description: 'Ouvre le formulaire d’ajout. Ne sauvegarde pas de titre.',
+        title: t.agentTools.addTitle,
+        description: t.agentTools.addDescription,
         inputSchema: { type: 'object', properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: false, untrustedContentHint: false },
         execute: (input: unknown) => {
@@ -471,7 +479,7 @@ export default function WatchApp() {
       } catch {}
     }
     return () => life.abort();
-  }, [state, loaded]);
+  }, [state, loaded, t]);
   const today = now.date || zonedNow(state.settings.timezone).date;
   const active = state.media.filter((m) => m.status !== 'completed');
   const priorities = active.filter((m) => m.priority);
@@ -523,16 +531,13 @@ export default function WatchApp() {
   const generate = () => {
     const proposed = planWeek(state, start);
     if (!proposed.length) {
-      toast.info(
-        'Aucune séance à ajouter. Vérifie tes titres, ton temps disponible et les séances déjà prévues.',
-      );
+      toast.info(t.toasts.noSessionsToAdd);
       return;
     }
     setPlanPreview(proposed);
   };
   const finish = async (s: Session) => {
-    if (await commit(completeSession(state, s.id)))
-      toast.success('Séance terminée. Progression mise à jour.');
+    if (await commit(completeSession(state, s.id))) toast.success(t.toasts.sessionDone);
   };
   const advance = async (m: Media) => {
     const progress = m.total ? Math.min(m.total, m.progress + 1) : m.progress + 1;
@@ -551,17 +556,17 @@ export default function WatchApp() {
         s.mediaId === m.id && s.to <= progress ? { ...s, done: true } : s,
       ),
     };
-    if (await commit(next)) toast.success(m.kind === 'manga' ? 'Chapitre noté !' : 'C’est noté !');
+    if (await commit(next)) toast.success(m.kind === 'manga' ? t.toasts.chapterLogged : t.toasts.logged);
   };
   const canAct = !!auth.user && loaded && !saving;
   const addCatalog = async (item: CatalogItem, priority: boolean) => {
     if (state.media.some((m) => sameTitle(m, item))) {
-      toast.info('Ce titre est déjà dans ta collection.');
+      toast.info(t.toasts.alreadyInCollection);
       return true;
     }
     const media = { ...mediaFromCatalog(item), priority };
     const ok = await commit({ ...state, media: [...state.media, media] });
-    if (ok) toast.success(`${item.title} ajouté à ta liste.`);
+    if (ok) toast.success(t.toasts.addedToList(item.title));
     return ok;
   };
   const sessionRow = (s: Session) => {
@@ -573,14 +578,16 @@ export default function WatchApp() {
         <div className="session-info">
           <h3>{m.title}</h3>
           <p>
-            {m.kind === 'film' ? 'Film' : `${unit(m)} ${s.from}${s.to > s.from ? ` – ${s.to}` : ''}`} ·{' '}
-            {s.duration} min
+            {m.kind === 'film'
+              ? t.kinds.film
+              : `${t.units[m.kind]} ${s.from}${s.to > s.from ? ` – ${s.to}` : ''}`}{' '}
+            · {s.duration} min
           </p>
         </div>
         <span className="session-time">{s.time}</span>
         <button
-          title={s.done ? 'Séance terminée' : 'Marquer terminé'}
-          aria-label={`Terminer ${m.title}`}
+          title={s.done ? t.media.sessionDone : t.media.markDone}
+          aria-label={t.media.finish(m.title)}
           className={`session-check ${s.done ? 'checked' : ''}`}
           disabled={!canAct || s.done}
           onClick={() => finish(s)}
@@ -596,15 +603,15 @@ export default function WatchApp() {
         <button
           className="collection-cover-detail"
           onClick={() => setCatalogDetail(itemFromMedia(m))}
-          aria-label={`Voir la fiche de ${m.title}`}
+          aria-label={t.media.viewDetailsOf(m.title)}
         >
           <MediaImage media={m} />
         </button>
-        <span className="poster-type">{kinds[m.kind]}</span>
+        <span className="poster-type">{t.kinds[m.kind]}</span>
         <button
           className={`icon-btn priority-toggle ${m.priority ? 'active' : ''}`}
-          title={m.priority ? 'Retirer la priorité' : 'Rendre prioritaire'}
-          aria-label={`Priorité pour ${m.title}`}
+          title={m.priority ? t.media.removePriority : t.media.makePriority}
+          aria-label={t.media.priorityFor(m.title)}
           aria-pressed={m.priority}
           disabled={!canAct}
           onClick={() =>
@@ -623,11 +630,14 @@ export default function WatchApp() {
         </button>
         <div className="media-meta">
           <span>
-            {m.progress} / {m.total || '?'} {unit(m)}
+            {m.progress} / {m.total || '?'} {t.units[m.kind]}
           </span>
-          <span className={`status-badge ${m.status}`}>{statuses[m.status]}</span>
+          <span className={`status-badge ${m.status}`}>{t.statuses[m.status]}</span>
         </div>
-        <Progress value={m.total ? (m.progress / m.total) * 100 : 0} aria-label={`Progression ${m.title}`} />
+        <Progress
+          value={m.total ? (m.progress / m.total) * 100 : 0}
+          aria-label={t.media.progressOf(m.title)}
+        />
         <div className="media-actions">
           <button
             className="secondary small-btn"
@@ -635,30 +645,34 @@ export default function WatchApp() {
             onClick={() => advance(m)}
           >
             <Check size={14} />
-            {m.kind === 'film' ? 'Vu' : m.kind === 'manga' ? '+1 chapitre' : '+1 épisode'}
+            {m.kind === 'film'
+              ? t.media.advanceFilm
+              : m.kind === 'manga'
+                ? t.media.advanceChapter
+                : t.media.advanceEpisode}
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="icon-btn" aria-label={`Options de ${m.title}`}>
+              <button className="icon-btn" aria-label={t.media.optionsFor(m.title)}>
                 <MoreHorizontal size={19} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setCatalogDetail(itemFromMedia(m))}>
                 <Info />
-                Voir la fiche
+                {t.media.viewDetails}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setMediaDialog(m)}>
                 <Pencil />
-                Modifier
+                {t.media.edit}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSessionDialog({ date: today, mediaId: m.id })}>
                 <CalendarPlus />
-                Planifier
+                {t.media.schedule}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setDeleteMedia(m)} className="danger">
                 <Trash2 />
-                Supprimer
+                {t.media.delete}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -673,20 +687,33 @@ export default function WatchApp() {
       <main className="main">
         <header className="topbar">
           <div className="topbar-title">
-            <SidebarTrigger aria-label="Ouvrir le menu" />
-            <span>{nav.find((n) => n.id === view)?.name}</span>
+            <SidebarTrigger aria-label={t.nav.openMenu} />
+            <span>{t.nav[view]}</span>
           </div>
           <div className="topbar-right">
             <InstallApp />
+            <button
+              className="ghost-btn small-btn lang-switch"
+              aria-label={t.langSwitch.aria}
+              title={t.langSwitch.aria}
+              onClick={() => setLang(lang === 'fr' ? 'en' : 'fr')}
+            >
+              <Languages size={15} />
+              <span>{t.langSwitch.label}</span>
+            </button>
             <span className="private-badge">
               <LockKeyhole size={13} />
-              {saving ? 'Sauvegarde…' : auth.user ? 'Espace privé' : 'Catalogue public'}
+              {saving ? t.topbar.saving : auth.user ? t.topbar.privateSpace : t.topbar.publicCatalog}
             </span>
-            <button className="icon-btn" aria-label="Ouvrir les rappels" onClick={() => setView('reminders')}>
+            <button
+              className="icon-btn"
+              aria-label={t.topbar.openReminders}
+              onClick={() => setView('reminders')}
+            >
               <Bell size={18} />
             </button>
             <button className="secondary small-btn" onClick={() => setView('account')}>
-              {auth.user ? 'Mon compte' : 'Se connecter'}
+              {auth.user ? t.nav.account : t.nav.signIn}
             </button>
           </div>
         </header>
@@ -696,7 +723,7 @@ export default function WatchApp() {
               <span>{error}</span>
               <button className="secondary small-btn" onClick={load}>
                 <RefreshCw size={14} />
-                Recharger
+                {t.common.reload}
               </button>
             </div>
           )}
@@ -704,8 +731,10 @@ export default function WatchApp() {
             <div className="notification-banner" role="status">
               <Bell size={20} />
               <p>
-                C’est l’heure de {state.media.find((m) => m.id === reminder.mediaId)?.title} ·{' '}
-                {reminder.duration} min
+                {t.reminder.banner(
+                  state.media.find((m) => m.id === reminder.mediaId)?.title || '',
+                  reminder.duration,
+                )}
               </p>
               <div className="row">
                 <button
@@ -715,9 +744,9 @@ export default function WatchApp() {
                     setReminder(null);
                   }}
                 >
-                  Voir la séance
+                  {t.reminder.seeSession}
                 </button>
-                <button className="icon-btn" aria-label="Fermer le rappel" onClick={() => setReminder(null)}>
+                <button className="icon-btn" aria-label={t.reminder.close} onClick={() => setReminder(null)}>
                   <X size={16} />
                 </button>
               </div>
@@ -728,68 +757,42 @@ export default function WatchApp() {
               <p className="eyebrow">
                 {view === 'today'
                   ? fmtDate(today, { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()
-                  : 'AFTERWATCH / TON ESPACE'}
+                  : t.app.eyebrow}
               </p>
-              <h1>
-                {
-                  (
-                    {
-                      catalog: 'Trouve ta prochaine histoire.',
-                      today: 'On reprend où ?',
-                      collection: 'Toutes tes histoires.',
-                      planning: 'Une semaine à ton rythme.',
-                      assistant: 'Ton compagnon de rattrapage.',
-                      reminders: 'Ne rate pas ta pause.',
-                      account: 'Ton compte Afterwatch.',
-                    } as Record<string, string>
-                  )[view]
-                }
-              </h1>
+              <h1>{t.headings[view]}</h1>
               <p>
-                {
-                  (
-                    {
-                      catalog: 'Parcours les couvertures. Ouvre une fiche. Ajoute à ta liste.',
-                      today: 'Tes priorités, un peu de temps, et une bonne histoire.',
-                      collection: 'Anime, mangas, films et séries. Tout est ici.',
-                      planning: `${state.settings.budget} minutes par jour. Tu gardes le contrôle.`,
-                      assistant: 'Des idées à découvrir. Un retard à rattraper. Sans spoiler.',
-                      reminders: 'Tes séances t’attendent, sans pression.',
-                      account: 'Retrouve tes histoires sur tous tes appareils.',
-                    } as Record<string, string>
-                  )[view]
-                }
+                {view === 'planning' ? t.subheadings.planning(state.settings.budget) : t.subheadings[view]}
               </p>
             </div>
             {['today', 'collection'].includes(view) ? (
               <button className="primary" disabled={!canAct} onClick={() => setView('catalog')}>
                 <Plus size={18} />
-                Parcourir le catalogue
+                {t.app.browseCatalog}
               </button>
             ) : view === 'planning' ? (
               <button className="primary" disabled={!canAct} onClick={generate}>
                 <CalendarDays size={17} />
-                Préparer ma semaine
+                {t.app.prepareWeek}
               </button>
             ) : view === 'reminders' ? (
               <button className="secondary" disabled={!canAct} onClick={() => setSettingsOpen(true)}>
                 <Settings2 size={17} />
-                Mes horaires
+                {t.app.myHours}
               </button>
             ) : null}
           </div>
           {view === 'catalog' && authChecked && !auth.user && (
             <p className="notice">
-              Découvre le catalogue librement.{' '}
+              {t.app.catalogNotice}{' '}
               <button className="ghost-btn small-btn" onClick={() => setView('account')}>
-                Connecte-toi pour enregistrer tes titres.
+                {t.app.signInToSaveTitles}
               </button>
             </p>
           )}
           {authChecked && !auth.user && !['catalog', 'account'].includes(view) ? (
             <AuthPanel {...auth} />
           ) : !loaded && !error && !['catalog', 'account'].includes(view) ? (
-            <div className="loading-grid" aria-label="Chargement de la collection">
+            <div className="loading-grid" aria-label={t.app.loadingCollection}>
               <Skeleton className="skeleton-block h-52 w-full" />
               <Skeleton className="skeleton-block h-24 w-full" />
               <Skeleton className="skeleton-block h-64 w-full" />
@@ -801,39 +804,37 @@ export default function WatchApp() {
                   <AuthPanel {...auth} />
                 ) : (
                   <p className="inline-note" role="status">
-                    Vérification de la connexion…
+                    {t.app.checkingSignIn}
                   </p>
                 ))}
               {view === 'today' && (
                 <>
                   <section className="welcome-banner">
-                    <img
-                      src="/night-city.webp"
-                      alt="Une ville illuminée sous un ciel de nuit et une lune corail"
-                    />
+                    <img src="/night-city.webp" alt={t.today.bannerAlt} />
                     <div className="banner-content">
                       <span className="tag">
-                        {todaySessions.some((s) => !s.done)
-                          ? 'TA SESSION DU JOUR'
-                          : 'LE PLAISIR DE REPRENDRE'}
+                        {todaySessions.some((s) => !s.done) ? t.today.tagSession : t.today.tagResume}
                       </span>
                       <h2>
                         {todaySessions.some((s) => !s.done)
                           ? state.media.find((m) => m.id === todaySessions.find((s) => !s.done)?.mediaId)
                               ?.title
-                          : 'Un épisode à la fois.'}
+                          : t.today.oneEpisode}
                       </h2>
                       <p>
                         {todaySessions.length
-                          ? `${todaySessions.filter((s) => !s.done).length} séance(s) restante(s) · ${todaySessions.filter((s) => !s.done).reduce((n, s) => n + s.duration, 0)} minutes au programme`
-                          : 'Ta liste peut être longue. Ta soirée peut rester simple.'}
+                          ? t.today.remaining(
+                              todaySessions.filter((s) => !s.done).length,
+                              todaySessions.filter((s) => !s.done).reduce((n, s) => n + s.duration, 0),
+                            )
+                          : t.today.simpleEvening}
                       </p>
                       <button
                         className="secondary small-btn"
                         onClick={() => (active.length ? setView('planning') : setView('catalog'))}
                       >
                         {active.length ? <CalendarDays size={15} /> : <Plus size={15} />}{' '}
-                        {active.length ? 'Voir mon programme' : 'Commencer ma collection'}
+                        {active.length ? t.today.seeSchedule : t.today.startCollection}
                       </button>
                     </div>
                   </section>
@@ -841,21 +842,21 @@ export default function WatchApp() {
                     <div className="stat">
                       <div className="stat-label">
                         <Layers3 size={20} />
-                        <span>À reprendre</span>
+                        <span>{t.today.toResume}</span>
                       </div>
                       <strong>{active.length}</strong>
                     </div>
                     <div className="stat">
                       <div className="stat-label">
                         <Flame size={20} />
-                        <span>Prioritaires</span>
+                        <span>{t.today.priorities}</span>
                       </div>
                       <strong>{priorities.length}</strong>
                     </div>
                     <div className="stat">
                       <div className="stat-label">
                         <Clock3 size={20} />
-                        <span>Par jour</span>
+                        <span>{t.today.perDay}</span>
                       </div>
                       <strong>{state.settings.budget === 60 ? '1 h' : `${state.settings.budget} m`}</strong>
                     </div>
@@ -865,16 +866,16 @@ export default function WatchApp() {
                       <div className="section-heading">
                         <h2>
                           <Play size={18} />
-                          Au programme aujourd’hui
+                          {t.today.todayProgram}
                         </h2>
-                        <span className="muted-count">{todaySessions.length} séance(s)</span>
+                        <span className="muted-count">{t.today.sessions(todaySessions.length)}</span>
                       </div>
                       {todaySessions.length ? (
                         todaySessions.map(sessionRow)
                       ) : (
                         <Blank
-                          title="Une soirée encore libre"
-                          description="Ajoute un titre et choisis quand le regarder ou le lire."
+                          title={t.today.freeEvening}
+                          description={t.today.freeEveningHint}
                           action={
                             <button
                               className="secondary small-btn"
@@ -883,7 +884,7 @@ export default function WatchApp() {
                               }
                             >
                               <Plus size={15} />
-                              Planifier une séance
+                              {t.today.planSession}
                             </button>
                           }
                         />
@@ -891,10 +892,10 @@ export default function WatchApp() {
                     </section>
                     <section className="panel">
                       <div className="section-heading">
-                        <h2>Les 7 prochains jours</h2>
+                        <h2>{t.today.nextDays}</h2>
                         <button
                           className="icon-btn"
-                          aria-label="Régler mes horaires"
+                          aria-label={t.today.adjustHours}
                           onClick={() => setSettingsOpen(true)}
                         >
                           <Settings2 size={17} />
@@ -910,7 +911,7 @@ export default function WatchApp() {
                               setView('planning');
                             }}
                           >
-                            <span>{dayNames[new Date(d + 'T12:00:00').getDay()]}</span>
+                            <span>{t.weekdaysShort[new Date(d + 'T12:00:00').getDay()]}</span>
                             <b>{new Date(d + 'T12:00:00').getDate()}</b>
                             <i />
                           </button>
@@ -918,7 +919,7 @@ export default function WatchApp() {
                       </div>
                       <p className="inline-note">
                         <Clock3 size={15} />
-                        {state.settings.time} · {state.settings.budget} min par jour
+                        {t.today.perDayLine(state.settings.time, state.settings.budget)}
                       </p>
                       <button
                         className="secondary full mt-24"
@@ -927,7 +928,7 @@ export default function WatchApp() {
                           setView('planning');
                         }}
                       >
-                        Organiser ma semaine
+                        {t.today.organizeWeek}
                       </button>
                     </section>
                   </div>
@@ -935,7 +936,7 @@ export default function WatchApp() {
                     <div className="section-heading">
                       <h2>
                         <Flame size={20} />
-                        En haut de ta liste
+                        {t.today.topOfList}
                       </h2>
                       <button
                         className="ghost-btn small-btn"
@@ -944,7 +945,7 @@ export default function WatchApp() {
                           setView('collection');
                         }}
                       >
-                        Tout voir
+                        {t.today.seeAll}
                       </button>
                     </div>
                     {priorities.length ? (
@@ -953,8 +954,7 @@ export default function WatchApp() {
                       <div className="panel">
                         <p className="inline-note">
                           <Flame size={17} />
-                          Marque tes titres prioritaires avec la flamme. Ils passeront en premier dans ton
-                          planning.
+                          {t.today.flameHint}
                         </p>
                       </div>
                     )}
@@ -973,14 +973,13 @@ export default function WatchApp() {
               {view === 'collection' && (
                 <>
                   <Tabs value={filter} onValueChange={setFilter} className="media-tabs">
-                    <TabsList aria-label="Type de contenu">
+                    <TabsList aria-label={t.collection.contentType}>
                       <TabsTrigger value="all">
-                        Tout <span className="muted-count">{state.media.length}</span>
+                        {t.collection.all} <span className="muted-count">{state.media.length}</span>
                       </TabsTrigger>
-                      {Object.entries(kinds).map(([v, t]) => (
+                      {kindKeys.map((v) => (
                         <TabsTrigger value={v} key={v}>
-                          {t}
-                          {v !== 'anime' ? 's' : ''}
+                          {t.kindsPlural[v]}
                         </TabsTrigger>
                       ))}
                     </TabsList>
@@ -989,8 +988,8 @@ export default function WatchApp() {
                         <div className="search-field">
                           <Search size={17} />
                           <input
-                            aria-label="Chercher dans ma collection"
-                            placeholder="Rechercher dans ma collection…"
+                            aria-label={t.collection.searchAria}
+                            placeholder={t.collection.searchPlaceholder}
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                           />
@@ -998,38 +997,27 @@ export default function WatchApp() {
                         <Choice
                           value={priorityFilter}
                           onChange={setPriorityFilter}
-                          label="Filtrer par priorité"
-                          options={{
-                            all: 'Tous les titres',
-                            priority: 'Prioritaires',
-                            normal: 'Non prioritaires',
-                            completed: 'Terminés',
-                          }}
+                          label={t.collection.filterAria}
+                          options={t.collection.filters}
                         />
                       </div>
-                      <span className="muted-count">{filtered.length} titre(s)</span>
+                      <span className="muted-count">{t.collection.titles(filtered.length)}</span>
                     </div>
-                    {['all', ...Object.keys(kinds)].map((tab) => (
+                    {['all', ...kindKeys].map((tab) => (
                       <TabsContent value={tab} key={tab}>
                         {filtered.length ? (
                           <div className="media-grid">{filtered.map(mediaCard)}</div>
                         ) : (
                           <div className="empty-collection">
                             <Blank
-                              title={
-                                state.media.length
-                                  ? 'Aucun titre avec ces filtres'
-                                  : 'Ta collection commence ici'
-                              }
+                              title={state.media.length ? t.collection.noMatch : t.collection.empty}
                               description={
-                                state.media.length
-                                  ? 'Essaie une autre recherche ou change de catégorie.'
-                                  : 'Ajoute le premier anime, manga, film ou série que tu veux reprendre.'
+                                state.media.length ? t.collection.noMatchHint : t.collection.emptyHint
                               }
                               action={
                                 <button className="primary" onClick={() => setView('catalog')}>
                                   <Plus size={17} />
-                                  Parcourir le catalogue
+                                  {t.app.browseCatalog}
                                 </button>
                               }
                             />
@@ -1045,7 +1033,7 @@ export default function WatchApp() {
                   <div className="row spread flex-wrap">
                     <p className="inline-note">
                       <Flame size={17} />
-                      Les titres prioritaires passent en premier.
+                      {t.planning.priorityFirst}
                     </p>
                     <button className="secondary small-btn" onClick={() => setSettingsOpen(true)}>
                       <Settings2 size={15} />
@@ -1059,17 +1047,17 @@ export default function WatchApp() {
                     <div className="row">
                       <button
                         className="icon-btn"
-                        aria-label="Semaine précédente"
+                        aria-label={t.planning.previousWeek}
                         onClick={() => setWeekOffset((v) => v - 1)}
                       >
                         <ChevronLeft size={20} />
                       </button>
                       <button className="ghost-btn small-btn" onClick={() => setWeekOffset(0)}>
-                        Aujourd’hui
+                        {t.planning.today}
                       </button>
                       <button
                         className="icon-btn"
-                        aria-label="Semaine suivante"
+                        aria-label={t.planning.nextWeek}
                         onClick={() => setWeekOffset((v) => v + 1)}
                       >
                         <ChevronRight size={20} />
@@ -1084,7 +1072,7 @@ export default function WatchApp() {
                       return (
                         <section className={`day-column ${date === today ? 'is-today' : ''}`} key={date}>
                           <div className="day-heading">
-                            <span>{dayNames[new Date(date + 'T12:00:00').getDay()]}</span>
+                            <span>{t.weekdaysShort[new Date(date + 'T12:00:00').getDay()]}</span>
                             <b>{new Date(date + 'T12:00:00').getDate()}</b>
                           </div>
                           {sessions.map((s) => {
@@ -1100,13 +1088,13 @@ export default function WatchApp() {
                                 <p>{m.title}</p>
                                 <small>
                                   {m.kind === 'film'
-                                    ? 'Film'
-                                    : `${unit(m)} ${s.from}${s.to > s.from ? `–${s.to}` : ''}`}
+                                    ? t.kinds.film
+                                    : `${t.units[m.kind]} ${s.from}${s.to > s.from ? `–${s.to}` : ''}`}
                                 </small>
                                 <div className="plan-actions">
                                   <button
                                     className="icon-btn"
-                                    aria-label={`Terminer ${m.title}`}
+                                    aria-label={t.media.finish(m.title)}
                                     disabled={s.done || !canAct}
                                     onClick={() => finish(s)}
                                   >
@@ -1114,7 +1102,7 @@ export default function WatchApp() {
                                   </button>
                                   <button
                                     className="icon-btn"
-                                    aria-label={`Déplacer ${m.title}`}
+                                    aria-label={t.planning.move(m.title)}
                                     onClick={() =>
                                       setSessionDialog({ date: s.date, mediaId: s.mediaId, session: s })
                                     }
@@ -1123,7 +1111,7 @@ export default function WatchApp() {
                                   </button>
                                   <button
                                     className="icon-btn"
-                                    aria-label={`Retirer la séance ${m.title}`}
+                                    aria-label={t.planning.removeSession(m.title)}
                                     disabled={!canAct}
                                     onClick={() =>
                                       commit({
@@ -1141,8 +1129,8 @@ export default function WatchApp() {
                           {!sessions.length && (
                             <p className="day-empty">
                               {state.settings.days.includes(new Date(date + 'T12:00:00').getDay())
-                                ? 'Soirée libre'
-                                : 'Jour de pause'}
+                                ? t.planning.freeEvening
+                                : t.planning.dayOff}
                             </p>
                           )}
                           <button
@@ -1150,7 +1138,7 @@ export default function WatchApp() {
                             onClick={() => (state.media.length ? setSessionDialog({ date }) : add())}
                           >
                             <Plus size={13} />
-                            Séance
+                            {t.planning.addSession}
                           </button>
                           {sessions.length > 0 && (
                             <p className="day-total">
@@ -1161,10 +1149,7 @@ export default function WatchApp() {
                       );
                     })}
                   </div>
-                  <p className="form-hint mt-24">
-                    Horaires : {state.settings.timezone}. Le programme automatique respecte ton budget et
-                    conserve les séances existantes. Les films trop longs restent à planifier manuellement.
-                  </p>
+                  <p className="form-hint mt-24">{t.planning.hint(state.settings.timezone)}</p>
                 </>
               )}
               {view === 'assistant' && (
@@ -1182,7 +1167,7 @@ export default function WatchApp() {
                     <div className="section-heading">
                       <h2>
                         <Bell size={18} />
-                        Mes prochains rendez-vous
+                        {t.reminders.upcoming}
                       </h2>
                     </div>
                     {upcoming.length ? (
@@ -1196,11 +1181,11 @@ export default function WatchApp() {
                       ))
                     ) : (
                       <Blank
-                        title="Rien de prévu pour le moment"
-                        description="Tes rappels apparaîtront dès que tu auras planifié une séance."
+                        title={t.reminders.nothingPlanned}
+                        description={t.reminders.nothingPlannedHint}
                         action={
                           <button className="secondary" onClick={() => setView('planning')}>
-                            Ouvrir mon planning
+                            {t.reminders.openPlanning}
                           </button>
                         }
                       />
@@ -1208,17 +1193,17 @@ export default function WatchApp() {
                   </section>
                   <section className="panel">
                     <div className="section-heading">
-                      <h2>Mes notifications</h2>
+                      <h2>{t.reminders.myNotifications}</h2>
                     </div>
                     <div className="settings-row">
                       <div>
-                        <h3>Rappels dans l’app</h3>
-                        <p>Une alerte au début de ta séance.</p>
+                        <h3>{t.reminders.inApp}</h3>
+                        <p>{t.reminders.inAppHint}</p>
                       </div>
                       <Switch
                         checked={state.settings.reminders}
                         disabled={!canAct}
-                        aria-label="Activer les rappels dans l’app"
+                        aria-label={t.reminders.inAppAria}
                         onCheckedChange={(v) =>
                           commit({ ...state, settings: { ...state.settings, reminders: v } })
                         }
@@ -1226,13 +1211,13 @@ export default function WatchApp() {
                     </div>
                     <div className="settings-row">
                       <div>
-                        <h3>Notifications du navigateur</h3>
+                        <h3>{t.reminders.browser}</h3>
                         <p>
                           {permission === 'granted'
-                            ? 'Autorisées sur cet appareil.'
+                            ? t.reminders.granted
                             : permission === 'denied'
-                              ? 'Bloquées. Tu peux les autoriser dans les réglages du navigateur.'
-                              : 'À autoriser sur chaque appareil.'}
+                              ? t.reminders.denied
+                              : t.reminders.ask}
                         </p>
                       </div>
                     </div>
@@ -1240,34 +1225,27 @@ export default function WatchApp() {
                       className="secondary full"
                       onClick={async () => {
                         if (!('Notification' in window)) {
-                          toast.info(
-                            'Ce navigateur ne prend pas en charge ces notifications. Les rappels dans l’app restent actifs.',
-                          );
+                          toast.info(t.toasts.notificationsUnsupported);
                           return;
                         }
                         try {
                           const p = await Notification.requestPermission();
                           setPermission(p);
                           toast.info(
-                            p === 'granted'
-                              ? 'Notifications autorisées.'
-                              : 'Les rappels dans l’app restent disponibles.',
+                            p === 'granted' ? t.toasts.notificationsAllowed : t.toasts.inAppStillAvailable,
                           );
                         } catch {
-                          toast.info('Utilise les rappels dans l’app sur cet appareil.');
+                          toast.info(t.toasts.useInApp);
                         }
                       }}
                       disabled={permission === 'granted' || permission === 'denied'}
                     >
                       <Bell size={16} />
-                      {permission === 'granted' ? 'Notifications autorisées' : 'Autoriser les notifications'}
+                      {permission === 'granted' ? t.reminders.allowedButton : t.reminders.allowButton}
                     </button>
-                    <p className="notice">
-                      Garde l’app ouverte pour recevoir ces rappels. Cette version n’envoie pas de
-                      notification quand elle est fermée.
-                    </p>
+                    <p className="notice">{t.reminders.keepOpen}</p>
                     <p className="subdued">
-                      Heure habituelle : <span className="accent-text">{state.settings.time}</span>
+                      {t.reminders.usualTime} <span className="accent-text">{state.settings.time}</span>
                       <br />
                       {state.settings.timezone}
                     </p>
@@ -1276,9 +1254,7 @@ export default function WatchApp() {
               )}
               <p className="footer-note">
                 <LockKeyhole size={12} />
-                {auth.user
-                  ? 'Ta collection est sauvegardée dans ton espace privé.'
-                  : 'Le catalogue est public. Connecte-toi pour créer ta collection privée.'}
+                {auth.user ? t.app.footerPrivate : t.app.footerPublic}
               </p>
             </>
           ) : null}
@@ -1310,7 +1286,7 @@ export default function WatchApp() {
                 (x) => x.kind === m.kind && x.title.toLocaleLowerCase() === m.title.toLocaleLowerCase(),
               )
             ) {
-              toast.error('Ce titre existe déjà dans ta collection.');
+              toast.error(t.toasts.titleExists);
               return false;
             }
             const ok = await commit({
@@ -1318,7 +1294,7 @@ export default function WatchApp() {
               media: exists ? state.media.map((x) => (x.id === m.id ? m : x)) : [...state.media, m],
             });
             if (ok) {
-              toast.success(exists ? 'Titre mis à jour.' : 'Ajouté à ta collection.');
+              toast.success(exists ? t.toasts.titleUpdated : t.toasts.addedToCollection);
               setMediaDialog(undefined);
             }
             return ok;
@@ -1338,7 +1314,7 @@ export default function WatchApp() {
             });
             if (ok) {
               setSessionDialog(null);
-              toast.success('Séance enregistrée.');
+              toast.success(t.toasts.sessionSaved);
             }
             return ok;
           }}
@@ -1352,7 +1328,7 @@ export default function WatchApp() {
           onSave={async (settings) => {
             if (await commit({ ...state, settings })) {
               setSettingsOpen(false);
-              toast.success('Préférences enregistrées.');
+              toast.success(t.toasts.preferencesSaved);
             }
           }}
         />
@@ -1360,13 +1336,11 @@ export default function WatchApp() {
       <AlertDialog open={!!deleteMedia} onOpenChange={(open) => !open && setDeleteMedia(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Retirer {deleteMedia?.title} ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Le titre et ses séances seront supprimés de ta collection.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t.removeDialog.title(deleteMedia?.title || '')}</AlertDialogTitle>
+            <AlertDialogDescription>{t.removeDialog.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Garder le titre</AlertDialogCancel>
+            <AlertDialogCancel>{t.removeDialog.keep}</AlertDialogCancel>
             <AlertDialogAction
               disabled={!canAct}
               onClick={async (e) => {
@@ -1380,11 +1354,11 @@ export default function WatchApp() {
                   }))
                 ) {
                   setDeleteMedia(null);
-                  toast.success('Titre retiré.');
+                  toast.success(t.toasts.titleRemoved);
                 }
               }}
             >
-              Retirer
+              {t.common.remove}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1392,10 +1366,12 @@ export default function WatchApp() {
       <Dialog open={planPreview !== null} onOpenChange={(open) => !open && setPlanPreview(null)}>
         <DialogContent className="modal-content">
           <DialogHeader>
-            <DialogTitle>Ton programme proposé</DialogTitle>
+            <DialogTitle>{t.planning.proposedTitle}</DialogTitle>
             <DialogDescription>
-              {planPreview?.length} séances, {planPreview?.reduce((n, s) => n + s.duration, 0)} minutes. Rien
-              n’est ajouté avant ta confirmation.
+              {t.planning.proposedDescription(
+                planPreview?.length || 0,
+                planPreview?.reduce((n, s) => n + s.duration, 0) || 0,
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="catalog-results">
@@ -1411,13 +1387,10 @@ export default function WatchApp() {
               </div>
             ))}
           </div>
-          <p className="form-hint">
-            Total inconnu : une seule unité proposée par titre. Vérifie les épisodes disponibles avant de
-            confirmer.
-          </p>
+          <p className="form-hint">{t.planning.unknownTotalHint}</p>
           <div className="modal-actions">
             <button className="secondary" onClick={() => setPlanPreview(null)}>
-              Annuler
+              {t.common.cancel}
             </button>
             <button
               className="primary"
@@ -1429,11 +1402,11 @@ export default function WatchApp() {
                 ) {
                   setPlanPreview(null);
                   setView('planning');
-                  toast.success('Programme ajouté !');
+                  toast.success(t.toasts.scheduleAdded);
                 }
               }}
             >
-              Ajouter au planning
+              {t.planning.addToPlanning}
             </button>
           </div>
         </DialogContent>
@@ -1452,6 +1425,7 @@ function MediaEditor({
   onSave: (m: Media) => Promise<boolean>;
   saving: boolean;
 }) {
+  const { t } = useI18n();
   const [m, setM] = useState<Media>(
     media || {
       id: '',
@@ -1489,7 +1463,7 @@ function MediaEditor({
       setSearched(true);
     } catch (e) {
       if (seq === requestSeq.current)
-        setSearchError(e instanceof Error ? e.message : 'Recherche indisponible.');
+        setSearchError(e instanceof Error ? e.message : t.mediaEditor.searchUnavailable);
     } finally {
       if (seq === requestSeq.current) setSearching(false);
     }
@@ -1498,19 +1472,19 @@ function MediaEditor({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="modal-content">
         <DialogHeader>
-          <DialogTitle>{media?.id ? 'Modifier le titre' : 'Ajouter à ma collection'}</DialogTitle>
-          <DialogDescription>Note où tu en es pour reprendre au bon endroit.</DialogDescription>
+          <DialogTitle>{media?.id ? t.mediaEditor.editTitle : t.mediaEditor.addTitle}</DialogTitle>
+          <DialogDescription>{t.mediaEditor.description}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
             setFormError('');
             if (!m.title.trim()) {
-              setFormError('Ajoute un titre.');
+              setFormError(t.mediaEditor.needTitle);
               return;
             }
             if (m.total && m.progress > m.total) {
-              setFormError('La progression ne peut pas dépasser le total.');
+              setFormError(t.mediaEditor.progressOverTotal);
               return;
             }
             await onSave({
@@ -1523,7 +1497,7 @@ function MediaEditor({
         >
           <div className="form-grid">
             <label className="field full-span">
-              <span>Catégorie</span>
+              <span>{t.mediaEditor.category}</span>
               <Choice
                 value={m.kind}
                 onChange={(v) => {
@@ -1542,19 +1516,23 @@ function MediaEditor({
                     duration: v === 'manga' ? 10 : v === 'film' ? 120 : v === 'series' ? 45 : 24,
                   }));
                 }}
-                label="Catégorie du titre"
-                options={kinds}
+                label={t.mediaEditor.categoryAria}
+                options={t.kinds}
               />
             </label>
             {!media?.id && m.kind !== 'film' && (
               <div className="field full-span">
-                <span>Rechercher un titre dans le catalogue</span>
+                <span>{t.mediaEditor.searchLabel}</span>
                 <div className="catalog-search">
                   <input
                     value={term}
                     onChange={(e) => setTerm(e.target.value)}
-                    placeholder={m.kind === 'manga' ? 'Ex. One Piece' : 'Ex. Frieren, Solo Leveling…'}
-                    aria-label="Titre à chercher dans le catalogue"
+                    placeholder={
+                      m.kind === 'manga'
+                        ? t.mediaEditor.searchPlaceholderManga
+                        : t.mediaEditor.searchPlaceholder
+                    }
+                    aria-label={t.mediaEditor.searchAria}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -1577,7 +1555,7 @@ function MediaEditor({
                   </p>
                 )}
                 {searched && !results.length && !searchError && (
-                  <p className="form-hint">Aucun résultat. Tu peux saisir le titre ci-dessous.</p>
+                  <p className="form-hint">{t.mediaEditor.noResults}</p>
                 )}
                 {results.length > 0 && (
                   <div className="catalog-results">
@@ -1613,39 +1591,43 @@ function MediaEditor({
                 <span className="form-hint">
                   {m.kind === 'series' ? (
                     <a href="https://www.tvmaze.com" target="_blank" rel="noreferrer">
-                      Catalogue : TVmaze · CC BY-SA
+                      {t.mediaEditor.sourceTvmaze}
                     </a>
                   ) : (
                     <a href="https://jikan.moe" target="_blank" rel="noreferrer">
-                      Catalogue : Jikan / MyAnimeList
+                      {t.mediaEditor.sourceJikan}
                     </a>
                   )}{' '}
-                  · ajout manuel toujours possible
+                  {t.mediaEditor.manualAlways}
                 </span>
               </div>
             )}
             <label className="field full-span">
-              <span>Titre</span>
+              <span>{t.common.title}</span>
               <input
                 value={m.title}
                 maxLength={180}
                 onChange={(e) => set('title', e.target.value)}
                 required
-                placeholder="Le titre de ton anime, manga, film ou série"
+                placeholder={t.mediaEditor.titlePlaceholder}
               />
             </label>
             <label className="field">
-              <span>Statut</span>
+              <span>{t.mediaEditor.status}</span>
               <Choice
                 value={m.status}
                 onChange={(v) => set('status', v as Media['status'])}
-                label="Statut"
-                options={statuses}
+                label={t.mediaEditor.status}
+                options={t.statuses}
               />
             </label>
             <label className="field">
               <span>
-                Minutes par {m.kind === 'manga' ? 'chapitre' : m.kind === 'film' ? 'film' : 'épisode'}
+                {m.kind === 'manga'
+                  ? t.mediaEditor.minutesPerChapter
+                  : m.kind === 'film'
+                    ? t.mediaEditor.minutesPerFilm
+                    : t.mediaEditor.minutesPerEpisode}
               </span>
               <input
                 type="number"
@@ -1659,10 +1641,10 @@ function MediaEditor({
             <label className="field">
               <span>
                 {m.kind === 'manga'
-                  ? 'Dernier chapitre lu'
+                  ? t.mediaEditor.lastChapter
                   : m.kind === 'film'
-                    ? 'Déjà vu (0 ou 1)'
-                    : 'Dernier épisode terminé'}
+                    ? t.mediaEditor.filmSeen
+                    : t.mediaEditor.lastEpisode}
               </span>
               <input
                 type="number"
@@ -1674,7 +1656,7 @@ function MediaEditor({
               />
             </label>
             <label className="field">
-              <span>{m.kind === 'film' ? 'Total (1 film)' : 'Total à suivre (0 si inconnu)'}</span>
+              <span>{m.kind === 'film' ? t.mediaEditor.totalFilm : t.mediaEditor.totalOther}</span>
               <input
                 type="number"
                 min={0}
@@ -1684,27 +1666,24 @@ function MediaEditor({
                 required
               />
             </label>
-            <p className="form-hint full-span">
-              Pour une diffusion en cours, indique le nombre d’épisodes déjà disponibles. Pour plusieurs
-              saisons, tu peux créer un titre par saison.
-            </p>
+            <p className="form-hint full-span">{t.mediaEditor.airingHint}</p>
             <label className="check-line full-span">
               <Checkbox checked={m.priority} onCheckedChange={(v) => set('priority', v === true)} />
               <Flame size={16} className="accent-text" />
-              Prioritaire dans mon rattrapage
+              {t.mediaEditor.priority}
             </label>
             <label className="field full-span">
-              <span>Notes · facultatif</span>
+              <span>{t.mediaEditor.notes}</span>
               <textarea
                 value={m.notes}
                 onChange={(e) => set('notes', e.target.value)}
                 maxLength={2000}
-                placeholder="Saison 2, arrêté en août…"
+                placeholder={t.mediaEditor.notesPlaceholder}
               />
             </label>
             {m.sourceUrl && (
               <a className="source-link full-span" href={m.sourceUrl} target="_blank" rel="noreferrer">
-                Voir la fiche du catalogue
+                {t.mediaEditor.viewCatalogEntry}
               </a>
             )}
           </div>
@@ -1715,10 +1694,11 @@ function MediaEditor({
           )}
           <div className="modal-actions mt-24">
             <button type="button" className="secondary" onClick={onClose}>
-              Annuler
+              {t.common.cancel}
             </button>
             <button type="submit" className="primary" disabled={saving}>
-              {saving ? <LoaderCircle className="loading-icon" size={16} /> : <Check size={16} />}Enregistrer
+              {saving ? <LoaderCircle className="loading-icon" size={16} /> : <Check size={16} />}
+              {t.common.save}
             </button>
           </div>
         </form>
@@ -1739,6 +1719,7 @@ function SessionEditor({
   onClose: () => void;
   onSave: (s: Session) => Promise<boolean>;
 }) {
+  const { t } = useI18n();
   const chosen = state.media.find((m) => m.id === data.mediaId) || state.media[0];
   const [id, setId] = useState(chosen?.id || '');
   const [date, setDate] = useState(data.date);
@@ -1761,21 +1742,21 @@ function SessionEditor({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="modal-content">
         <DialogHeader>
-          <DialogTitle>{data.session ? 'Modifier la séance' : 'Planifier une séance'}</DialogTitle>
-          <DialogDescription>Choisis ton créneau dans le fuseau {state.settings.timezone}.</DialogDescription>
+          <DialogTitle>{data.session ? t.sessionEditor.editTitle : t.sessionEditor.addTitle}</DialogTitle>
+          <DialogDescription>{t.sessionEditor.description(state.settings.timezone)}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
             setErr('');
             if (!m || from < 1 || to < from || (m.total > 0 && to > m.total) || duration > 1440) {
-              setErr('Vérifie les épisodes ou chapitres et le total disponible.');
+              setErr(t.sessionEditor.checkUnits);
               return;
             }
             const [a, b] = time.split(':').map(Number);
             const minute = a * 60 + b;
             if (minute + duration > 1440) {
-              setErr('La séance doit se terminer avant minuit.');
+              setErr(t.sessionEditor.beforeMidnight);
               return;
             }
             const overlap = state.sessions.some((s) => {
@@ -1785,7 +1766,7 @@ function SessionEditor({
               return minute < start + s.duration && minute + duration > start;
             });
             if (overlap) {
-              setErr('Une autre séance occupe déjà ce créneau. Choisis une autre heure.');
+              setErr(t.sessionEditor.overlap);
               return;
             }
             await onSave({
@@ -1802,7 +1783,7 @@ function SessionEditor({
         >
           <div className="form-grid">
             <label className="field full-span">
-              <span>Titre</span>
+              <span>{t.common.title}</span>
               <Choice
                 value={id}
                 onChange={(v) => {
@@ -1811,20 +1792,20 @@ function SessionEditor({
                   setFrom(n);
                   setTo(n);
                 }}
-                label="Titre à planifier"
+                label={t.sessionEditor.titleAria}
                 options={Object.fromEntries(state.media.map((m) => [m.id, m.title]))}
               />
             </label>
             <label className="field">
-              <span>Jour</span>
+              <span>{t.sessionEditor.day}</span>
               <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
             </label>
             <label className="field">
-              <span>Heure</span>
+              <span>{t.sessionEditor.time}</span>
               <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
             </label>
             <label className="field">
-              <span>Premier {m?.kind === 'manga' ? 'chapitre' : 'épisode / film'}</span>
+              <span>{m?.kind === 'manga' ? t.sessionEditor.firstChapter : t.sessionEditor.firstEpisode}</span>
               <input
                 type="number"
                 min={1}
@@ -1839,7 +1820,7 @@ function SessionEditor({
               />
             </label>
             <label className="field">
-              <span>Dernier {m?.kind === 'manga' ? 'chapitre' : 'épisode / film'}</span>
+              <span>{m?.kind === 'manga' ? t.sessionEditor.lastChapter : t.sessionEditor.lastEpisode}</span>
               <input
                 type="number"
                 min={from}
@@ -1852,11 +1833,7 @@ function SessionEditor({
           </div>
           <p className="notice">
             <Clock3 size={15} className="inline mr-2" />
-            {duration} minutes prévues
-            {duration > state.settings.budget
-              ? ` · au-delà de ton objectif de ${state.settings.budget} min`
-              : ''}
-            .
+            {t.sessionEditor.plannedMinutes(duration, state.settings.budget)}
           </p>
           {err && (
             <p className="form-hint danger" role="alert">
@@ -1865,11 +1842,11 @@ function SessionEditor({
           )}
           <div className="modal-actions mt-24">
             <button type="button" className="secondary" onClick={onClose}>
-              Annuler
+              {t.common.cancel}
             </button>
             <button type="submit" className="primary" disabled={saving || !m}>
               <CalendarPlus size={16} />
-              Enregistrer
+              {t.common.save}
             </button>
           </div>
         </form>
@@ -1888,28 +1865,30 @@ function SettingsEditor({
   onSave: (s: Settings) => Promise<void>;
   saving: boolean;
 }) {
+  const { t } = useI18n();
   const [s, setS] = useState(initial);
   const [error, setError] = useState('');
+  // Keep a saved zone selectable even if it is not in the suggested list.
+  const zones: Record<string, string> = { ...t.settingsEditor.timezones };
+  if (!zones[s.timezone]) zones[s.timezone] = s.timezone;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="modal-content">
         <DialogHeader>
-          <DialogTitle>Mon rythme</DialogTitle>
-          <DialogDescription>
-            Ces préférences servent aux prochains programmes. Les séances existantes gardent leurs horaires.
-          </DialogDescription>
+          <DialogTitle>{t.settingsEditor.title}</DialogTitle>
+          <DialogDescription>{t.settingsEditor.description}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             if (!s.days.length) {
-              setError('Choisis au moins un jour.');
+              setError(t.settingsEditor.pickDay);
               return;
             }
             try {
               new Intl.DateTimeFormat('fr', { timeZone: s.timezone });
             } catch {
-              setError('Le fuseau horaire est invalide.');
+              setError(t.settingsEditor.badTimezone);
               return;
             }
             onSave(s);
@@ -1917,7 +1896,7 @@ function SettingsEditor({
         >
           <div className="form-grid">
             <label className="field">
-              <span>Minutes par jour</span>
+              <span>{t.settingsEditor.minutesPerDay}</span>
               <input
                 type="number"
                 min={15}
@@ -1928,7 +1907,7 @@ function SettingsEditor({
               />
             </label>
             <label className="field">
-              <span>Heure habituelle</span>
+              <span>{t.settingsEditor.usualTime}</span>
               <input
                 type="time"
                 required
@@ -1937,7 +1916,7 @@ function SettingsEditor({
               />
             </label>
             <div className="field full-span">
-              <span>Mes jours disponibles</span>
+              <span>{t.settingsEditor.availableDays}</span>
               <div className="day-choices">
                 {[1, 2, 3, 4, 5, 6, 0].map((day) => (
                   <label className="day-choice" key={day}>
@@ -1947,39 +1926,32 @@ function SettingsEditor({
                         setS({ ...s, days: v ? [...s.days, day] : s.days.filter((x) => x !== day) })
                       }
                     />
-                    {dayNames[day]}
+                    {t.weekdaysShort[day]}
                   </label>
                 ))}
               </div>
             </div>
             <label className="field full-span">
-              <span>Fuseau horaire</span>
+              <span>{t.settingsEditor.timezone}</span>
               <Choice
                 value={s.timezone}
                 onChange={(v) => setS({ ...s, timezone: v })}
-                label="Fuseau horaire"
-                options={{
-                  'America/New_York': 'New York / Floride',
-                  'America/Port-au-Prince': 'Port-au-Prince / Haïti',
-                  'America/Chicago': 'Chicago',
-                  'America/Los_Angeles': 'Los Angeles',
-                  'Europe/Paris': 'Paris',
-                  UTC: 'UTC',
-                }}
+                label={t.settingsEditor.timezone}
+                options={zones}
               />
             </label>
             <label className="check-line full-span">
               <Switch checked={s.reminders} onCheckedChange={(v) => setS({ ...s, reminders: v })} />
-              Rappels quand l’app est ouverte
+              {t.settingsEditor.remindersOpen}
             </label>
           </div>
           {error && <p className="notice danger">{error}</p>}
           <div className="modal-actions mt-24">
             <button type="button" className="secondary" onClick={onClose}>
-              Annuler
+              {t.common.cancel}
             </button>
             <button type="submit" className="primary" disabled={saving}>
-              Enregistrer
+              {t.common.save}
             </button>
           </div>
         </form>
@@ -1998,6 +1970,7 @@ function Assistant({
   onPlanning: () => void;
   expectedUserId: string;
 }) {
+  const { t } = useI18n();
   const [key, setKey] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [question, setQuestion] = useState('');
@@ -2012,7 +1985,7 @@ function Assistant({
   const ask = async (text: string) => {
     if (!text.trim() || busy) return;
     if (!aiReady && (!key.trim() || !confirmed)) {
-      setErr('Ajoute ta clé Google AI Studio et confirme que ton projet reste sur le palier gratuit.');
+      setErr(t.assistant.needKey);
       return;
     }
     setBusy(true);
@@ -2026,11 +1999,11 @@ function Assistant({
         body: JSON.stringify({ message: text, apiKey: key.trim() || undefined, history, expectedUserId }),
       });
       const data: any = await r.json();
-      if (!r.ok) throw new Error(data.error || 'L’assistant est indisponible.');
+      if (!r.ok) throw new Error(data.error || t.assistant.unavailable);
       setMessages((m) => [...m, { role: 'user', text }, { role: 'model', text: data.text }]);
       setQuestion('');
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'L’assistant est indisponible.');
+      setErr(e instanceof Error ? e.message : t.assistant.unavailable);
       setFailed(text);
     } finally {
       setBusy(false);
@@ -2044,42 +2017,14 @@ function Assistant({
             <div className="sparkle-box">
               <Sparkles size={30} />
             </div>
-            <h2>Qu’est-ce qu’on regarde ?</h2>
-            <p>
-              Gemini s’appuie sur tes priorités et ta progression pour t’aider à choisir.{' '}
-              {state.settings.budget} minutes aujourd’hui, c’est déjà un bon début.
-            </p>
+            <h2>{t.assistant.introTitle}</h2>
+            <p>{t.assistant.intro(state.settings.budget)}</p>
             <div className="suggested-prompts">
-              <button
-                disabled={busy}
-                onClick={() =>
-                  ask(
-                    'Aide-moi à rattraper mon retard depuis août avec ma collection et mon temps disponible.',
-                  )
-                }
-              >
-                Organiser mon rattrapage
-              </button>
-              <button
-                disabled={busy}
-                onClick={() =>
-                  ask(
-                    'Recommande-moi trois titres à découvrir d’après ma collection. Explique pourquoi, sans spoiler. Si ma collection est vide, demande-moi mes goûts.',
-                  )
-                }
-              >
-                Trouver ma prochaine histoire
-              </button>
-              <button
-                disabled={busy}
-                onClick={() =>
-                  ask(
-                    'Que me conseilles-tu de regarder ou lire ce soir parmi mes priorités, en respectant mon temps disponible ?',
-                  )
-                }
-              >
-                Choisir pour ce soir
-              </button>
+              {t.assistant.prompts.map((prompt) => (
+                <button key={prompt.label} disabled={busy} onClick={() => ask(prompt.text)}>
+                  {prompt.label}
+                </button>
+              ))}
             </div>
           </div>
         ) : (
@@ -2096,7 +2041,7 @@ function Assistant({
         {busy && (
           <p className="inline-note" role="status">
             <LoaderCircle size={16} className="loading-icon" />
-            Gemini prépare sa réponse…
+            {t.assistant.thinking}
           </p>
         )}
         {err && (
@@ -2104,7 +2049,7 @@ function Assistant({
             {err}
             {failed && (
               <button className="ghost-btn small-btn" disabled={busy} onClick={() => ask(failed)}>
-                Réessayer
+                {t.common.retry}
               </button>
             )}
           </div>
@@ -2119,8 +2064,8 @@ function Assistant({
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="J’ai une heure ce soir, aide-moi à choisir…"
-            aria-label="Message pour Gemini"
+            placeholder={t.assistant.placeholder}
+            aria-label={t.assistant.messageAria}
             maxLength={2500}
             rows={2}
             onKeyDown={(e) => {
@@ -2130,32 +2075,29 @@ function Assistant({
               }
             }}
           />
-          <button className="primary" aria-label="Envoyer à Gemini" disabled={busy || !question.trim()}>
+          <button className="primary" aria-label={t.assistant.sendAria} disabled={busy || !question.trim()}>
             <Send size={18} />
           </button>
         </form>
-        <p className="form-hint mt-24">
-          Gemini donne des conseils ; il ne modifie pas ta collection. Ses réponses peuvent contenir des
-          erreurs et ne vérifient pas les sorties en direct.
-        </p>
+        <p className="form-hint mt-24">{t.assistant.disclaimer}</p>
       </section>
       <aside className="panel key-panel">
         <h2>
           <KeyRound size={19} />
-          {aiReady ? 'Gemini connecté' : 'Connecter Gemini'}
+          {aiReady ? t.assistant.connected : t.assistant.connect}
         </h2>
         <div className="key-details">
           {!aiReady ? (
             <div>
               <p>
-                Crée une clé dans{' '}
+                {t.assistant.createKeyBefore}{' '}
                 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
                   Google AI Studio
                 </a>{' '}
-                en restant sur un projet sans facturation.
+                {t.assistant.createKeyAfter}
               </p>
               <label className="field">
-                <span>Clé API Gemini</span>
+                <span>{t.assistant.keyLabel}</span>
                 <input
                   type="password"
                   autoComplete="off"
@@ -2163,45 +2105,34 @@ function Assistant({
                   spellCheck={false}
                   value={key}
                   onChange={(e) => setKey(e.target.value)}
-                  placeholder="Colle ta clé ici"
+                  placeholder={t.assistant.keyPlaceholder}
                 />
               </label>
-              <p className="form-hint">
-                La clé reste en mémoire dans cet écran et est transmise à Google pour répondre. Elle n’est ni
-                sauvegardée ni incluse dans le code.
-              </p>
+              <p className="form-hint">{t.assistant.keyHint}</p>
               <label className="check-line">
                 <Checkbox checked={confirmed} onCheckedChange={(v) => setConfirmed(v === true)} />
-                <span className="form-hint">
-                  Mon projet Google utilise le palier gratuit, sans facturation activée.
-                </span>
+                <span className="form-hint">{t.assistant.freeTier}</span>
               </label>
             </div>
           ) : (
-            <p>La connexion Gemini est configurée pour cet espace.</p>
+            <p>{t.assistant.serverConfigured}</p>
           )}
           <div>
-            <div className="notice">
-              Gemini 2.5 Flash dispose d’un palier gratuit soumis à quotas. Si la limite est atteinte,
-              réessaie plus tard. Aucun basculement automatique vers un modèle payant.
-            </div>
-            <p>
-              Ta question, les titres et la progression de ta collection sont envoyés à Google. Le palier
-              gratuit peut utiliser ces données pour améliorer ses services.
-            </p>
+            <div className="notice">{t.assistant.quota}</div>
+            <p>{t.assistant.data}</p>
             <a
               className="form-hint"
               href="https://ai.google.dev/gemini-api/docs/pricing"
               target="_blank"
               rel="noreferrer"
             >
-              Consulter les conditions et quotas Google
+              {t.assistant.terms}
             </a>
             <div className="divider mt-24" />
-            <p>Tu peux aussi préparer ton programme sans utiliser l’IA.</p>
+            <p>{t.assistant.withoutAi}</p>
             <button className="secondary full" onClick={onPlanning}>
               <CalendarDays size={16} />
-              Planning automatique
+              {t.assistant.autoPlanning}
             </button>
           </div>
         </div>

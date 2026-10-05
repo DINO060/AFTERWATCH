@@ -1,4 +1,5 @@
 import { browseWith, detailWith, CatalogFailure } from './catalog-gateway';
+import type { Messages } from './i18n';
 import type { Kind } from './watch';
 import type { CatalogItem, CatalogPage } from './catalog';
 
@@ -7,10 +8,10 @@ async function readJson(response: Response) {
   try {
     data = await response.json();
   } catch {
-    throw new CatalogFailure('La source a envoyé une réponse illisible.');
+    throw new CatalogFailure('unreadable');
   }
-  if (!response.ok)
-    throw new CatalogFailure(data.error || 'Catalogue temporairement indisponible.', response.status);
+  // Errors from /api/catalog arrive already translated by the server.
+  if (!response.ok) throw new CatalogFailure('unavailable', response.status, data.error || undefined);
   return data;
 }
 function directFetch(signal?: AbortSignal) {
@@ -31,6 +32,12 @@ function shouldFallback(error: unknown, signal?: AbortSignal) {
   if (signal?.aborted) return false;
   return !(error instanceof CatalogFailure && [400, 401, 403, 404, 429].includes(error.status));
 }
+/** Text to show for a catalog error in the interface language. */
+export function catalogErrorText(error: unknown, t: Messages): string {
+  if (error instanceof CatalogFailure)
+    return error.message !== error.key ? error.message : t.catalogErrors[error.key];
+  return t.catalogErrors.unavailable;
+}
 export async function loadCatalog(
   kind: Kind,
   query: string,
@@ -46,9 +53,7 @@ export async function loadCatalog(
       return await browseWith(directFetch(signal), kind, query, page);
     } catch (error) {
       if (signal?.aborted) throw error;
-      throw new Error(
-        'Les sources du catalogue ne répondent pas. Réessaie dans un instant ou essaie une autre catégorie.',
-      );
+      throw new CatalogFailure('allSourcesDown');
     }
   }
 }

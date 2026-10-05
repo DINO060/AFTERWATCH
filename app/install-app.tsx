@@ -2,11 +2,14 @@
 import { useEffect, useState } from 'react';
 import { Download, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { useI18n } from './i18n-provider';
 type InstallPrompt = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 };
 export default function InstallApp() {
+  const { t, lang } = useI18n();
+  const colon = lang === 'fr' ? ' :' : ':';
   const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
   const [installed, setInstalled] = useState(false);
   const [help, setHelp] = useState(false);
@@ -51,33 +54,25 @@ export default function InstallApp() {
     <>
       <button className="ghost-btn small-btn install-button" onClick={install} disabled={installed}>
         {installed ? <Check size={16} /> : <Download size={16} />}
-        <span>{installed ? 'Installée' : 'Installer l’app'}</span>
+        <span>{installed ? t.install.installed : t.install.install}</span>
       </button>
       <Dialog open={help} onOpenChange={setHelp}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Afterwatch sur ton écran d’accueil</DialogTitle>
-            <DialogDescription>
-              Ouvre le site dans ton navigateur habituel pour l’installer.
-            </DialogDescription>
+            <DialogTitle>{t.install.title}</DialogTitle>
+            <DialogDescription>{t.install.description}</DialogDescription>
           </DialogHeader>
           <div className="install-help">
             <p>
-              <strong>iPhone / iPad :</strong> dans Safari, appuie sur Partager, puis « Sur l’écran d’accueil
-              ».
+              <strong>iPhone / iPad{colon}</strong> {t.install.ios}
             </p>
             <p>
-              <strong>Android :</strong> dans Chrome, ouvre le menu ⋮, puis « Installer l’application » ou «
-              Ajouter à l’écran d’accueil ».
+              <strong>Android{colon}</strong> {t.install.android}
             </p>
             <p>
-              <strong>Windows / Mac :</strong> cherche l’icône d’installation dans la barre d’adresse de
-              Chrome ou Edge. Dans Safari sur Mac, utilise « Fichier → Ajouter au Dock ».
+              <strong>Windows / Mac{colon}</strong> {t.install.desktop}
             </p>
-            <p className="form-hint">
-              Tu retrouves la même app et la même collection. Internet et ta connexion au site restent
-              nécessaires. Les rappels fonctionnent tant que l’app est ouverte.
-            </p>
+            <p className="form-hint">{t.install.hint}</p>
           </div>
         </DialogContent>
       </Dialog>

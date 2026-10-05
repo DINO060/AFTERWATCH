@@ -1,11 +1,14 @@
 import { requireUser } from '@/lib/auth';
 import { getEnabledProviders } from '@/lib/auth-providers';
+import { langFromRequest, messages } from '@/lib/i18n';
 import { getSupabaseConfig, getTelegramProvider } from '@/lib/supabase/config';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store' };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const lang = langFromRequest(request);
+  const t = messages[lang].api;
   const config = getSupabaseConfig();
   const configured = Boolean(config);
   const telegramProvider = getTelegramProvider();
@@ -16,7 +19,7 @@ export async function GET() {
   const providers = getEnabledProviders(config);
 
   try {
-    const [{ user }, { google: googleEnabled }] = await Promise.all([requireUser(), providers]);
+    const [{ user }, { google: googleEnabled }] = await Promise.all([requireUser(lang), providers]);
     const metadata = user.user_metadata;
     const name = [
       metadata.full_name,
@@ -30,7 +33,7 @@ export async function GET() {
         user: {
           id: user.id,
           email: user.email || null,
-          displayName: typeof name === 'string' ? name : user.email?.split('@')[0] || 'Membre Afterwatch',
+          displayName: typeof name === 'string' ? name : user.email?.split('@')[0] || t.memberFallback,
           telegramLinked: Boolean(
             telegramProvider && user.identities?.some((identity) => identity.provider === telegramProvider),
           ),
@@ -49,6 +52,6 @@ export async function GET() {
       );
     }
     if (error instanceof Response) return error;
-    return Response.json({ error: 'Impossible de vérifier ta connexion.' }, { status: 503, headers });
+    return Response.json({ error: t.verifyFailed }, { status: 503, headers });
   }
 }

@@ -5,6 +5,11 @@ import type { Provider } from '@supabase/supabase-js';
 import { Link2, LoaderCircle, LogOut, Mail, Send } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { getTelegramProvider } from '@/lib/supabase/config';
+import type { Messages } from '@/lib/i18n';
+import { useI18n } from './i18n-provider';
+
+// Messages are kept as keys so they follow a language switch while on screen.
+type AuthText = keyof Messages['auth'];
 
 export type AccountUser = {
   id: string;
@@ -51,10 +56,11 @@ export function AuthPanel({
   googleEnabled,
   onAuthChange,
 }: AuthPanelProps) {
+  const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState<'email' | 'telegram' | 'google' | 'signout' | null>(null);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [message, setMessage] = useState<AuthText | ''>('');
+  const [error, setError] = useState<AuthText | ''>('');
   const knownUserId = useRef(user?.id || null);
   const authChange = useRef(onAuthChange);
 
@@ -67,11 +73,7 @@ export function AuthPanel({
     const authError = new URLSearchParams(window.location.search).get('auth_error');
     if (authError !== null) {
       setError(
-        authError === 'expired'
-          ? 'Ce lien a expiré ou a déjà été utilisé. Demande un nouveau lien et clique sur le plus récent.'
-          : authError === 'browser'
-            ? 'Ce lien doit être ouvert dans le navigateur où tu as demandé la connexion. Demande un nouveau lien depuis cet appareil.'
-            : 'La connexion n’a pas abouti. Demande un nouveau lien ou réessaie.',
+        authError === 'expired' ? 'linkExpired' : authError === 'browser' ? 'linkOtherBrowser' : 'linkFailed',
       );
       const url = new URL(window.location.href);
       url.searchParams.delete('auth_error');
@@ -109,24 +111,20 @@ export function AuthPanel({
         options: { emailRedirectTo: `${window.location.origin}/auth/callback`, shouldCreateUser: true },
       });
       if (authError) throw authError;
-      setMessage(
-        'Vérifie ta boîte mail et les indésirables. Ouvre le lien dans ce navigateur pour te connecter, sans mot de passe.',
-      );
+      setMessage('emailSent');
     } catch (cause) {
       const { code, status } = (cause ?? {}) as { code?: string; status?: number };
       console.warn('Afterwatch e-mail sign-in failed', code || status || 'unknown');
       if (status === 429 || code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit') {
-        setError('Trop de demandes de lien. Attends quelques minutes avant de réessayer.');
+        setError('tooManyRequests');
       } else if (code === 'email_address_invalid' || code === 'validation_failed') {
-        setError('Cette adresse e-mail n’est pas valide. Vérifie-la puis réessaie.');
+        setError('invalidEmail');
       } else if (code === 'email_address_not_authorized') {
-        setError(
-          'La connexion par e-mail n’est pas encore ouverte à toutes les adresses. Utilise Google ou réessaie plus tard.',
-        );
+        setError('emailNotOpen');
       } else if (code === 'signup_disabled') {
-        setError('Les inscriptions sont fermées pour le moment.');
+        setError('signupDisabled');
       } else {
-        setError('Impossible d’envoyer le lien. Vérifie ton adresse, puis réessaie dans une minute.');
+        setError('sendFailed');
       }
     } finally {
       setBusy(null);
@@ -149,11 +147,7 @@ export function AuthPanel({
       if (authError || !data.url) throw authError || new Error('Missing redirect');
       window.location.assign(data.url);
     } catch {
-      setError(
-        user
-          ? 'Impossible de lier Telegram. Réessaie ou vérifie si ce compte Telegram est déjà lié à un autre compte.'
-          : 'La connexion avec Telegram est indisponible pour le moment.',
-      );
+      setError(user ? 'telegramLinkFailed' : 'telegramUnavailable');
       setBusy(null);
     }
   }
@@ -174,7 +168,7 @@ export function AuthPanel({
       if (authError || !data.url) throw authError || new Error('Missing redirect');
       window.location.assign(data.url);
     } catch {
-      setError('La connexion avec Google est indisponible pour le moment.');
+      setError('googleUnavailable');
       setBusy(null);
     }
   }
@@ -192,31 +186,32 @@ export function AuthPanel({
       if (onAuthChange) onAuthChange();
       else window.location.reload();
     } catch {
-      setError('Impossible de terminer la déconnexion. Réessaie.');
+      setError('signoutFailed');
       setBusy(null);
     }
   }
 
   return (
-    <section className="panel" aria-label="Mon compte">
+    <section className="panel" aria-label={t.auth.panelAria}>
       <div className="section-heading">
         <h2>
           <Mail size={19} />
-          {user ? 'Mon compte' : 'Connecte-toi à Afterwatch'}
+          {user ? t.auth.myAccount : t.auth.signInTitle}
         </h2>
       </div>
       {!configured ? (
-        <p className="subdued">La connexion sera bientôt disponible. Tu peux déjà découvrir le catalogue.</p>
+        <p className="subdued">{t.auth.notConfigured}</p>
       ) : user ? (
         <>
           <p className="subdued">
-            Connecté en tant que <strong>{user.displayName}</strong>
-            {user.email && <> · {user.email}</>}. Ta collection et ton planning restent dans ton compte.
+            {t.auth.signedInAs} <strong>{user.displayName}</strong>
+            {user.email && <> · {user.email}</>}
+            {t.auth.accountNote}
           </p>
           {user.telegramLinked && (
             <p className="inline-note">
               <Link2 size={16} />
-              Telegram est lié à ce compte.
+              {t.auth.telegramLinked}
             </p>
           )}
           <div className="row flex-wrap mt-24">
@@ -227,7 +222,7 @@ export function AuthPanel({
                 ) : (
                   <Link2 size={16} />
                 )}
-                Lier mon compte Telegram
+                {t.auth.linkTelegram}
               </button>
             )}
             <button className="secondary" type="button" disabled={Boolean(busy)} onClick={signOut}>
@@ -236,16 +231,13 @@ export function AuthPanel({
               ) : (
                 <LogOut size={16} />
               )}
-              Se déconnecter
+              {t.auth.signOut}
             </button>
           </div>
         </>
       ) : (
         <>
-          <p className="subdued">
-            Enregistre ta collection, ta progression et ton planning. Le catalogue reste accessible sans
-            compte.
-          </p>
+          <p className="subdued">{t.auth.intro}</p>
           {googleEnabled && (
             <>
               <button
@@ -255,14 +247,14 @@ export function AuthPanel({
                 onClick={connectGoogle}
               >
                 {busy === 'google' ? <LoaderCircle className="loading-icon" size={16} /> : <GoogleIcon />}
-                Continuer avec Google
+                {t.auth.continueGoogle}
               </button>
-              <p className="form-hint">Ou reçois un lien de connexion par e-mail :</p>
+              <p className="form-hint">{t.auth.orEmail}</p>
             </>
           )}
           <form onSubmit={sendEmail}>
             <label className="field">
-              <span>Adresse e-mail</span>
+              <span>{t.auth.emailLabel}</span>
               <input
                 type="email"
                 autoComplete="email"
@@ -272,13 +264,13 @@ export function AuthPanel({
                 maxLength={254}
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="toi@exemple.com"
+                placeholder={t.auth.emailPlaceholder}
                 disabled={Boolean(busy)}
               />
             </label>
             <button className="primary mt-24" type="submit" disabled={Boolean(busy)}>
               {busy === 'email' ? <LoaderCircle className="loading-icon" size={16} /> : <Mail size={16} />}
-              Recevoir un lien de connexion
+              {t.auth.sendLink}
             </button>
           </form>
           {telegramEnabled && (
@@ -289,25 +281,20 @@ export function AuthPanel({
               onClick={connectTelegram}
             >
               {busy === 'telegram' ? <LoaderCircle className="loading-icon" size={16} /> : <Send size={16} />}
-              Continuer avec Telegram
+              {t.auth.continueTelegram}
             </button>
           )}
-          {telegramEnabled && (
-            <p className="form-hint">
-              Tu as déjà un compte par e-mail ? Connecte-toi d’abord, puis lie Telegram pour conserver ta
-              collection.
-            </p>
-          )}
+          {telegramEnabled && <p className="form-hint">{t.auth.telegramHint}</p>}
         </>
       )}
       {message && (
         <p className="notice" role="status">
-          {message}
+          {t.auth[message]}
         </p>
       )}
       {error && (
         <p className="notice danger" role="alert">
-          {error}
+          {t.auth[error]}
         </p>
       )}
     </section>

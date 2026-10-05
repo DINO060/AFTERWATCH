@@ -1,7 +1,9 @@
 // Public metadata only; no collection or authentication data is returned.
 import { catalogDetail, CatalogFailure } from '@/lib/catalog-server';
+import { langFromRequest, messages } from '@/lib/i18n';
 import type { Kind } from '@/lib/watch';
 export async function GET(request: Request) {
+  const t = messages[langFromRequest(request)].catalogErrors;
   try {
     const p = new URL(request.url).searchParams;
     const item = await catalogDetail(p.get('kind') as Kind, p.get('source') || '', p.get('id') || '');
@@ -9,12 +11,7 @@ export async function GET(request: Request) {
   } catch (e) {
     if (e instanceof Response) return e;
     return Response.json(
-      {
-        error:
-          e instanceof CatalogFailure
-            ? e.message
-            : 'La fiche est momentanément indisponible. Réessaie dans un instant.',
-      },
+      { error: e instanceof CatalogFailure ? t[e.key] : t.detailDown },
       { status: e instanceof CatalogFailure ? e.status : 503 },
     );
   }

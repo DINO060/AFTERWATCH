@@ -1,9 +1,8 @@
 {
   "id": "/",
-  "name": "Afterwatch — Ta collection",
+  "name": "Afterwatch",
   "short_name": "Afterwatch",
-  "description": "Anime, mangas, films et séries. Tes priorités, ton planning.",
-  "lang": "fr",
+  "description": "Anime, manga, films & series · Anime, mangas, films et séries.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

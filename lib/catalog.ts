@@ -72,18 +72,6 @@ export function itemFromMedia(m: Media): CatalogItem {
     },
   };
 }
-export function countLabel(item: CatalogItem) {
-  const c = item.catalog;
-  if (item.kind === 'film') return c.durationKnown ? `${item.duration} min` : 'Film';
-  if (item.kind === 'manga')
-    return c.chapters !== null
-      ? `${c.chapters} chapitres`
-      : c.volumes !== null
-        ? `${c.volumes} tomes`
-        : 'Chapitres non renseignés';
-  if (c.episodes !== null) return `${c.episodes} épisodes`;
-  return c.seasons !== null ? `${c.seasons} saisons` : 'Épisodes : voir la fiche';
-}
 export function cleanText(value: unknown, max = 12000) {
   return String(value || '')
     .replace(/<br\s*\/?\s*>/gi, '\n')

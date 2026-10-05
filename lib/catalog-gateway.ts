@@ -6,12 +6,16 @@ import {
   type CatalogPage,
   type CatalogItem,
 } from './catalog';
+import type { Messages } from './i18n';
 import type { Kind } from './watch';
 
+export type CatalogErrorKey = keyof Messages['catalogErrors'];
+/** `key` names the translated text; `message` keeps a text already translated by the server, if any. */
 export class CatalogFailure extends Error {
   constructor(
-    message: string,
+    public key: CatalogErrorKey,
     public status = 503,
+    message: string = key,
   ) {
     super(message);
   }
@@ -36,7 +40,7 @@ export async function browseWith(
       if (query) params.set('filter[text]', query);
       else params.set('sort', '-userCount');
       const data = await fetchJson(`https://kitsu.app/api/edge/${kind}?${params}`);
-      if (!Array.isArray(data.data)) throw new CatalogFailure('Réponse Kitsu invalide.');
+      if (!Array.isArray(data.data)) throw new CatalogFailure('badResponse');
       return {
         results: data.data
           .filter((x: any) => !x.attributes?.nsfw)
@@ -52,7 +56,7 @@ export async function browseWith(
       if (query) params.set('q', query);
       else params.set('filter', 'bypopularity');
       const data = await fetchJson(`https://api.jikan.moe/v4/${query ? kind : `top/${kind}`}?${params}`);
-      if (!Array.isArray(data.data)) throw new CatalogFailure('Réponse Jikan invalide.');
+      if (!Array.isArray(data.data)) throw new CatalogFailure('badResponse');
       return {
         results: data.data.map((x: any) => normalizeJikan(x, kind)),
         page,
@@ -88,7 +92,7 @@ export async function browseWith(
   const skip = (page - 1) * size;
   const extra = query ? `/search=${encodeURIComponent(query)}` : skip ? `/skip=${skip}` : '';
   const data = await fetchJson(`https://v3-cinemeta.strem.io/catalog/movie/top${extra}.json`);
-  if (!Array.isArray(data.metas)) throw new CatalogFailure('Réponse Cinemeta invalide.');
+  if (!Array.isArray(data.metas)) throw new CatalogFailure('badResponse');
   const all = data.metas.filter((x: any) => /^tt\d+$/.test(x.id) && x.type === 'movie');
   return {
     results: (query ? all.slice(skip, skip + size) : all.slice(0, size)).map((x: any) =>
@@ -109,12 +113,12 @@ export async function detailWith(
 ): Promise<CatalogItem> {
   if (source === 'kitsu' && (kind === 'anime' || kind === 'manga') && /^\d{1,9}$/.test(id)) {
     const data = await fetchJson(`https://kitsu.app/api/edge/${kind}/${id}?include=categories`);
-    if (!data.data) throw new CatalogFailure('Fiche introuvable.', 404);
+    if (!data.data) throw new CatalogFailure('notFound', 404);
     return normalizeKitsu(data.data, kind, data.included);
   }
   if (source === 'jikan' && (kind === 'anime' || kind === 'manga') && /^\d{1,9}$/.test(id)) {
     const data = await fetchJson(`https://api.jikan.moe/v4/${kind}/${id}/full`);
-    if (!data.data) throw new CatalogFailure('Fiche introuvable.', 404);
+    if (!data.data) throw new CatalogFailure('notFound', 404);
     return normalizeJikan(data.data, kind);
   }
   if (source === 'tvmaze' && kind === 'series' && /^\d{1,9}$/.test(id))
@@ -122,8 +126,8 @@ export async function detailWith(
   if (source === 'cinemeta' && (kind === 'film' || kind === 'series') && /^tt\d{1,12}$/.test(id)) {
     const type = kind === 'film' ? 'movie' : 'series';
     const data = await fetchJson(`https://v3-cinemeta.strem.io/meta/${type}/${id}.json`);
-    if (!data.meta) throw new CatalogFailure('Fiche introuvable.', 404);
+    if (!data.meta) throw new CatalogFailure('notFound', 404);
     return normalizeCinemeta({ ...data.meta, type }, true);
   }
-  throw new CatalogFailure('Référence de catalogue invalide.', 400);
+  throw new CatalogFailure('badReference', 400);
 }

@@ -89,7 +89,7 @@ try {
         'kitsu',
         'https://evil.test',
       ),
-    /invalide/,
+    { key: 'badReference', status: 400 },
   );
   await assert.rejects(
     () =>

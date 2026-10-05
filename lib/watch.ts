@@ -1,6 +1,7 @@
 import type { CatalogInfo } from './catalog';
-export const kinds = { anime: 'Anime', manga: 'Manga', series: 'Série', film: 'Film' } as const;
-export type Kind = keyof typeof kinds;
+// Labels live in lib/i18n.ts (kinds, kindsPlural, units).
+export const kindKeys = ['anime', 'manga', 'series', 'film'] as const;
+export type Kind = (typeof kindKeys)[number];
 export type Media = {
   id: string;
   title: string;
@@ -38,7 +39,6 @@ export const defaults: WatchState = {
     timezone: 'America/New_York',
   },
 };
-export const unit = (m: Media) => (m.kind === 'manga' ? 'chap.' : m.kind === 'film' ? 'film' : 'ép.');
 export const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 export function dayPlus(date: string, n: number) {
