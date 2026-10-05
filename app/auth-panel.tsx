@@ -39,8 +39,13 @@ export function AuthPanel({ user, configured, telegramEnabled, googleEnabled, on
   }, [user?.id, onAuthChange]);
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('auth_error')) {
-      setError('La connexion n’a pas abouti. Demande un nouveau lien ou réessaie.');
+    const authError = new URLSearchParams(window.location.search).get('auth_error');
+    if (authError !== null) {
+      setError(authError === 'expired'
+        ? 'Ce lien a expiré ou a déjà été utilisé. Demande un nouveau lien et clique sur le plus récent.'
+        : authError === 'browser'
+          ? 'Ce lien doit être ouvert dans le navigateur où tu as demandé la connexion. Demande un nouveau lien depuis cet appareil.'
+          : 'La connexion n’a pas abouti. Demande un nouveau lien ou réessaie.');
       const url = new URL(window.location.href);
       url.searchParams.delete('auth_error');
       window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
