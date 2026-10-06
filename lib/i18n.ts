@@ -595,7 +595,8 @@ const fr = {
     tabLogin: 'Connexion',
     tabSignup: 'Inscription',
     signupTitle: 'Crée ton compte Afterwatch',
-    signupIntro: 'Un compte gratuit pour garder ta collection, ta progression et ton planning sur tous tes appareils.',
+    signupIntro:
+      'Un compte gratuit pour garder ta collection, ta progression et ton planning sur tous tes appareils.',
     or: 'ou',
     passwordLabel: 'Mot de passe',
     newPasswordLabel: 'Nouveau mot de passe',
@@ -640,6 +641,51 @@ const fr = {
     desktop:
       'cherche l’icône d’installation dans la barre d’adresse de Chrome ou Edge. Dans Safari sur Mac, utilise « Fichier → Ajouter au Dock ».',
     hint: 'Tu retrouves la même app et la même collection. Internet et ta connexion au site restent nécessaires. Les rappels fonctionnent tant que l’app est ouverte.',
+  },
+  notify: {
+    reminderTitle: (title: string) => `C’est l’heure : ${title}`,
+    reminderBody: (detail: string, minutes: number) => `${detail} · ${minutes} min au programme.`,
+    episodeTitle: (title: string) => `Nouvel épisode : ${title}`,
+    episodeBody: (label: string) => `${label} est disponible.`,
+    episodeLabel: (episode: number, season: number | null) =>
+      season ? `Saison ${season}, épisode ${episode}` : `L’épisode ${episode}`,
+    weeklySubject: 'Ta semaine sur Afterwatch',
+    weeklyIntro: (count: number, minutes: number) =>
+      count
+        ? `${count} ${count > 1 ? 'séances prévues' : 'séance prévue'} cette semaine, ${minutes} minutes au total.`
+        : 'Rien de prévu cette semaine pour l’instant.',
+    weeklyEmptyHint: 'Ouvre ton planning pour préparer quelques séances.',
+    weeklyPriorities: (n: number) =>
+      `${n} ${n > 1 ? 'titres prioritaires' : 'titre prioritaire'} dans ta liste.`,
+    openApp: 'Ouvrir Afterwatch',
+    openSchedule: 'Voir mon planning',
+    footer: 'Tu reçois cet e-mail parce que tu as activé les notifications Afterwatch.',
+    unsubscribe: 'Se désabonner des e-mails',
+    settingsTitle: 'Notifications',
+    settingsIntro: 'Choisis ce que tu veux recevoir, par e-mail et sur ce téléphone ou cet ordinateur.',
+    emailHeading: 'Par e-mail',
+    pushHeading: 'Sur cet appareil',
+    reminders: 'Rappel au début de chaque séance',
+    newEpisodes: 'Nouvel épisode d’un anime ou d’une série de ma liste',
+    weekly: 'Résumé de la semaine, le lundi à 9 h',
+    emailUnavailable: 'L’envoi d’e-mails n’est pas encore configuré.',
+    pushUnavailable: 'Ce navigateur ne permet pas les notifications.',
+    pushIosHint:
+      'Sur iPhone et iPad : ajoute d’abord Afterwatch à l’écran d’accueil (Partager → « Sur l’écran d’accueil »), puis ouvre-le depuis là.',
+    pushEnable: 'Activer sur cet appareil',
+    pushDisable: 'Désactiver sur cet appareil',
+    pushOn: 'Les notifications sont activées sur cet appareil.',
+    pushDenied: 'Les notifications sont bloquées dans les réglages du navigateur pour ce site.',
+    pushFailed: 'Impossible d’activer les notifications sur cet appareil. Réessaie.',
+    saveFailed: 'Impossible d’enregistrer tes préférences. Réessaie.',
+    episodesHint: 'Nouveaux épisodes : anime et séries de ta liste (pas encore les chapitres de manga).',
+    unsubscribeTitle: 'Se désabonner',
+    unsubscribeQuestion: 'Ne plus recevoir aucun e-mail de notification Afterwatch ?',
+    unsubscribeConfirm: 'Confirmer le désabonnement',
+    unsubscribeDone:
+      'C’est fait : tu ne recevras plus d’e-mails de notification. Tu peux les réactiver dans « Mon compte ».',
+    unsubscribeInvalid: 'Ce lien de désabonnement n’est plus valide.',
+    backToSite: 'Retour à Afterwatch',
   },
   api: {
     authUnavailable: 'La connexion est indisponible pour le moment.',
@@ -1239,7 +1285,8 @@ const en: Messages = {
     forgotTitle: 'Reset your password',
     forgotIntro: 'Enter your email: you’ll get a link to choose a new password.',
     sendReset: 'Send the link',
-    resetSent: 'If an account exists for this address, a link has just been sent. Check your spam folder too.',
+    resetSent:
+      'If an account exists for this address, a link has just been sent. Check your spam folder too.',
     signupSent: 'Account created! Confirm your address with the link we emailed you, then log in.',
     invalidCredentials:
       'Wrong email or password. Signed up with Google or an email link? Use “Forgot password” to create one.',
@@ -1264,6 +1311,50 @@ const en: Messages = {
     desktop:
       'look for the install icon in the Chrome or Edge address bar. In Safari on Mac, use “File → Add to Dock”.',
     hint: 'You get the same app and the same collection. You still need internet and to be signed in. Reminders work while the app is open.',
+  },
+  notify: {
+    reminderTitle: (title: string) => `It’s time: ${title}`,
+    reminderBody: (detail: string, minutes: number) => `${detail} · ${minutes} min planned.`,
+    episodeTitle: (title: string) => `New episode: ${title}`,
+    episodeBody: (label: string) => `${label} is out.`,
+    episodeLabel: (episode: number, season: number | null) =>
+      season ? `Season ${season}, episode ${episode}` : `Episode ${episode}`,
+    weeklySubject: 'Your week on Afterwatch',
+    weeklyIntro: (count: number, minutes: number) =>
+      count
+        ? `${count} ${count === 1 ? 'session' : 'sessions'} planned this week, ${minutes} minutes in total.`
+        : 'Nothing planned this week yet.',
+    weeklyEmptyHint: 'Open your schedule to plan a few sessions.',
+    weeklyPriorities: (n: number) => `${n} priority ${n === 1 ? 'title' : 'titles'} in your list.`,
+    openApp: 'Open Afterwatch',
+    openSchedule: 'See my schedule',
+    footer: 'You’re getting this email because you turned on Afterwatch notifications.',
+    unsubscribe: 'Unsubscribe from emails',
+    settingsTitle: 'Notifications',
+    settingsIntro: 'Choose what you want to get, by email and on this phone or computer.',
+    emailHeading: 'By email',
+    pushHeading: 'On this device',
+    reminders: 'Reminder when each session starts',
+    newEpisodes: 'New episode of an anime or series in my list',
+    weekly: 'Weekly summary, Mondays at 9 am',
+    emailUnavailable: 'Email sending isn’t set up yet.',
+    pushUnavailable: 'This browser doesn’t support notifications.',
+    pushIosHint:
+      'On iPhone and iPad: first add Afterwatch to your Home Screen (Share → “Add to Home Screen”), then open it from there.',
+    pushEnable: 'Turn on for this device',
+    pushDisable: 'Turn off for this device',
+    pushOn: 'Notifications are on for this device.',
+    pushDenied: 'Notifications are blocked for this site in your browser settings.',
+    pushFailed: 'Couldn’t turn on notifications for this device. Try again.',
+    saveFailed: 'Couldn’t save your preferences. Try again.',
+    episodesHint: 'New episodes: anime and series in your list (manga chapters aren’t covered yet).',
+    unsubscribeTitle: 'Unsubscribe',
+    unsubscribeQuestion: 'Stop receiving all Afterwatch notification emails?',
+    unsubscribeConfirm: 'Confirm unsubscribe',
+    unsubscribeDone:
+      'Done: you won’t get notification emails anymore. You can turn them back on in “My account”.',
+    unsubscribeInvalid: 'This unsubscribe link is no longer valid.',
+    backToSite: 'Back to Afterwatch',
   },
   api: {
     authUnavailable: 'Sign-in is unavailable right now.',

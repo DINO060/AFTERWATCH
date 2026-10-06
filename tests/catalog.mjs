@@ -14,7 +14,8 @@ try {
       .transpileModule(input, {
         compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
       })
-      .outputText.replaceAll("'./catalog'", "'./catalog.mjs'").replaceAll("'./watch'", "'./watch.mjs'");
+      .outputText.replaceAll("'./catalog'", "'./catalog.mjs'")
+      .replaceAll("'./watch'", "'./watch.mjs'");
     fs.writeFileSync(path.join(temp, `${name}.mjs`), js);
   }
   const { browseWith, detailWith, feedsFor, currentSeason } = await import(
@@ -154,10 +155,20 @@ try {
   assert.match(await kitsuUrl('novel', 'airing'), /filter\[subtype\]=novel.*filter\[status\]=current/);
   assert.match(await kitsuUrl('manga', 'top'), /filter\[subtype\]=manga,oneshot/);
   let mangaSearch = '';
-  await browseWith(async (url) => ((mangaSearch = decodeURIComponent(url)), { data: [] }), 'manga', 'solo', 1);
+  await browseWith(
+    async (url) => ((mangaSearch = decodeURIComponent(url)), { data: [] }),
+    'manga',
+    'solo',
+    1,
+  );
   assert.ok(!mangaSearch.includes('filter[subtype]'), 'manga search covers every subtype');
   let novelSearch = '';
-  await browseWith(async (url) => ((novelSearch = decodeURIComponent(url)), { data: [] }), 'novel', 'overlord', 1);
+  await browseWith(
+    async (url) => ((novelSearch = decodeURIComponent(url)), { data: [] }),
+    'novel',
+    'overlord',
+    1,
+  );
   assert.ok(novelSearch.includes('filter[subtype]=novel'));
   await assert.rejects(() => kitsuUrl('manhwa', 'upcoming'), { key: 'feedUnavailable' });
   const manhwa = await browseWith(

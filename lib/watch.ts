@@ -5,7 +5,8 @@ export type Kind = (typeof kindKeys)[number];
 /** Catalog categories: manhwa and light novels are browsed apart but saved as "manga" titles. */
 export const catalogKinds = ['anime', 'manga', 'manhwa', 'novel', 'film', 'series'] as const;
 export type CatalogKind = (typeof catalogKinds)[number];
-export const savedKind = (kind: CatalogKind): Kind => (kind === 'manhwa' || kind === 'novel' ? 'manga' : kind);
+export const savedKind = (kind: CatalogKind): Kind =>
+  kind === 'manhwa' || kind === 'novel' ? 'manga' : kind;
 export type Media = {
   id: string;
   title: string;

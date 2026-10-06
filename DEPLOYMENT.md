@@ -151,3 +151,40 @@ registrar. Conserver les enregistrements d'e-mail.
 Aucune collection personnelle n'est incluse dans le dépôt. Une collection existante
 sur Sites reste dans l'ancien D1 et n'apparaît pas automatiquement dans Supabase.
 Tout import devra vérifier la propriété du compte et conserver la sauvegarde source.
+
+## 6. Notifications (e-mail et téléphone)
+
+Trois envois : rappel au début d'une séance, nouvel épisode (anime via AniList, séries
+via TMDB/TVmaze) et résumé du lundi 9 h. Chaque membre les active dans « Mon compte ».
+
+1. **SQL** : exécuter `supabase/migrations/202610060001_notifications.sql` une fois.
+2. **Vercel → Environment Variables** (Production et Preview) : `SUPABASE_SECRET_KEY`
+   (Supabase → Project Settings → API Keys → Secret key), `RESEND_API_KEY` (Resend → API
+   Keys, accès « Sending » au domaine), `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
+   et `CRON_SECRET` (générés dans `.env.local`). Redéployer ensuite.
+3. **Planification Supabase** (SQL Editor), en remplaçant `COLLER_LE_CRON_SECRET` par la
+   valeur de `CRON_SECRET` — ce secret ne doit jamais être commité :
+
+```sql
+create extension if not exists pg_cron;
+create extension if not exists pg_net with schema extensions;
+select vault.create_secret('COLLER_LE_CRON_SECRET', 'afterwatch_cron_secret');
+select cron.schedule(
+  'afterwatch-notify',
+  '*/10 * * * *',
+  $$
+  select net.http_post(
+    url := 'https://www.afterwatch.online/api/cron/notify',
+    headers := jsonb_build_object(
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'afterwatch_cron_secret'),
+      'Content-Type', 'application/json'
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 55000
+  );
+  $$
+);
+```
+
+Vérifier les appels dans `cron.job_run_details` et les réponses dans `net._http_response`.
+Pour arrêter : `select cron.unschedule('afterwatch-notify');`.

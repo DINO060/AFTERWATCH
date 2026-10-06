@@ -67,7 +67,10 @@ export async function browseWith(
   if (!query && !feedsFor(catalogKind, Boolean(options.tmdb)).includes(feed))
     throw new CatalogFailure('feedUnavailable', 400);
   const kind = savedKind(catalogKind);
-  const print = catalogKind === 'anime' || catalogKind === 'film' || catalogKind === 'series' ? null : printTypes[catalogKind];
+  const print =
+    catalogKind === 'anime' || catalogKind === 'film' || catalogKind === 'series'
+      ? null
+      : printTypes[catalogKind];
   const subtypeFilter = print && !(query && catalogKind === 'manga');
 
   if (kind === 'anime' || kind === 'manga') {

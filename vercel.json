@@ -4,6 +4,11 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "functions": {
-    "app/api/assistant/route.ts": { "maxDuration": 60 }
+    "app/api/assistant/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/notify/route.ts": {
+      "maxDuration": 60
+    }
   }
 }

@@ -73,6 +73,7 @@ import { type CatalogItem, mediaFromCatalog, sameTitle, itemFromMedia } from '@/
 import AuthPanel, { type AuthMode, type AuthStatus } from './auth-panel';
 import { SiteHeader, BottomNav, type View } from './site-header';
 import HomeView from './home-view';
+import NotificationSettings from './notification-settings';
 import type { Feed } from '@/lib/catalog-gateway';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { useI18n } from './i18n-provider';
@@ -733,6 +734,7 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
                     recovery={recovery}
                     onProfileChange={refreshAccount}
                   />
+                  {auth.user && <NotificationSettings key={auth.user.id} />}
                   <div className="install-row">
                     <InstallApp />
                   </div>

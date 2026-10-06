@@ -34,7 +34,7 @@ const tmdbKey = () => process.env.TMDB_API_KEY?.trim() || '';
 export const tmdbEnabled = () => Boolean(tmdbKey());
 
 /** TMDB accepts either the v4 read token (Bearer) or the v3 API key (query parameter). */
-function tmdbFetcher(lang: Lang): TmdbFetch | undefined {
+export function tmdbFetcher(lang: Lang): TmdbFetch | undefined {
   const key = tmdbKey();
   if (!key) return undefined;
   const bearer = key.startsWith('eyJ');

@@ -1,6 +1,16 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
-import { BookOpen, BookText, Check, Clapperboard, Film, LibraryBig, LoaderCircle, Plus, Smartphone } from 'lucide-react';
+import {
+  BookOpen,
+  BookText,
+  Check,
+  Clapperboard,
+  Film,
+  LibraryBig,
+  LoaderCircle,
+  Plus,
+  Smartphone,
+} from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { sameTitle, type CatalogItem, type CatalogPage } from '@/lib/catalog';
 import { feedsFor, type Feed } from '@/lib/catalog-gateway';
