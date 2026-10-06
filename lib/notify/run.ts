@@ -37,6 +37,8 @@ export type RunSummary = {
   sent: number;
   failed: number;
   skipped?: string;
+  /** Which settings the server can see (never their values); only shown to the scheduled caller. */
+  config?: { supabaseSecret: boolean; email: boolean; push: boolean; tmdb: boolean };
 };
 
 const anyOn =
@@ -62,6 +64,12 @@ export async function runNotifications(site: string, now = Date.now()): Promise<
     queued: 0,
     sent: 0,
     failed: 0,
+    config: {
+      supabaseSecret: Boolean(process.env.SUPABASE_SECRET_KEY?.trim()),
+      email: emailReady(),
+      push: pushReady(),
+      tmdb: Boolean(tmdbFetcher('en')),
+    },
   };
   const admin = createSupabaseAdminClient();
   if (!admin) return { ...summary, skipped: 'SUPABASE_SECRET_KEY missing' };
