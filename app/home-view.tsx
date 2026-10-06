@@ -1,12 +1,12 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
-import { BookOpen, Check, Clapperboard, Film, LibraryBig, LoaderCircle, Plus } from 'lucide-react';
+import { BookOpen, BookText, Check, Clapperboard, Film, LibraryBig, LoaderCircle, Plus, Smartphone } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { sameTitle, type CatalogItem, type CatalogPage } from '@/lib/catalog';
 import { feedsFor, type Feed } from '@/lib/catalog-gateway';
 import { loadCatalog, loadDetail } from '@/lib/catalog-client';
 import type { Lang } from '@/lib/i18n';
-import type { Kind, Media } from '@/lib/watch';
+import type { CatalogKind, Media } from '@/lib/watch';
 import { CatalogPoster, feedLabel } from './catalog-browser';
 import { HeroCarousel } from './hero-carousel';
 import { useI18n } from './i18n-provider';
@@ -14,6 +14,8 @@ import { useI18n } from './i18n-provider';
 const kinds = [
   { key: 'anime', icon: Clapperboard },
   { key: 'manga', icon: BookOpen },
+  { key: 'manhwa', icon: Smartphone },
+  { key: 'novel', icon: BookText },
   { key: 'film', icon: Film },
   { key: 'series', icon: LibraryBig },
 ] as const;
@@ -21,7 +23,7 @@ const kinds = [
 // One request per list for 10 minutes, shared by the carousel and the rows across views.
 const TTL = 10 * 60 * 1000;
 const feedCache = new Map<string, { until: number; promise: Promise<CatalogPage> }>();
-function loadFeed(kind: Kind, feed: Feed, lang: Lang): Promise<CatalogPage> {
+function loadFeed(kind: CatalogKind, feed: Feed, lang: Lang): Promise<CatalogPage> {
   const key = `${lang}:${kind}:${feed}`;
   const cached = feedCache.get(key);
   if (cached && cached.until > Date.now()) return cached.promise;
@@ -30,7 +32,7 @@ function loadFeed(kind: Kind, feed: Feed, lang: Lang): Promise<CatalogPage> {
   promise.catch(() => feedCache.delete(key));
   return promise;
 }
-function useFeed(kind: Kind, feed: Feed, lang: Lang) {
+function useFeed(kind: CatalogKind, feed: Feed, lang: Lang) {
   const [state, setState] = useState<{ page: CatalogPage | null; failed: boolean }>({
     page: null,
     failed: false,
@@ -62,11 +64,11 @@ export default function HomeView({
   saving: boolean;
   onAdd: (item: CatalogItem, priority: boolean) => Promise<boolean>;
   onDetail: (item: CatalogItem) => void;
-  onSeeAll: (kind: Kind, feed: Feed) => void;
+  onSeeAll: (kind: CatalogKind, feed: Feed) => void;
   tonight?: ReactNode;
 }) {
   const { t, lang } = useI18n();
-  const [kind, setKind] = useState<Kind>('anime');
+  const [kind, setKind] = useState<CatalogKind>('anime');
   const feeds = feedsFor(kind, tmdb);
   const heroFeed: Feed = feeds.includes('new') ? 'new' : feeds.includes('airing') ? 'airing' : 'popular';
   const hero = useFeed(kind, heroFeed, lang);
@@ -143,7 +145,7 @@ function FeedRow({
   onDetail,
   onSeeAll,
 }: {
-  kind: Kind;
+  kind: CatalogKind;
   feed: Feed;
   lang: Lang;
   saving: boolean;

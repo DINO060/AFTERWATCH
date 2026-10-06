@@ -8,7 +8,7 @@ import {
   type CatalogItem,
 } from './catalog';
 import type { Lang, Messages } from './i18n';
-import type { Kind } from './watch';
+import { savedKind, type CatalogKind, type Kind } from './watch';
 
 export type CatalogErrorKey = keyof Messages['catalogErrors'];
 /** `key` names the translated text; `message` keeps a text already translated by the server, if any. */
@@ -29,9 +29,9 @@ export const allFeeds: readonly Feed[] = ['popular', 'new', 'airing', 'upcoming'
 export type BrowseOptions = { feed?: Feed; tmdb?: TmdbFetch; lang?: Lang };
 
 /** Feeds each catalog can serve; films and series gain "upcoming"/"airing" with TMDB. */
-export function feedsFor(kind: Kind, tmdb: boolean): Feed[] {
+export function feedsFor(kind: CatalogKind, tmdb: boolean): Feed[] {
   if (kind === 'anime') return ['popular', 'new', 'airing', 'upcoming', 'top'];
-  if (kind === 'manga') return ['popular', 'airing', 'top'];
+  if (kind === 'manga' || kind === 'manhwa' || kind === 'novel') return ['popular', 'airing', 'top'];
   if (kind === 'film') return tmdb ? ['popular', 'new', 'upcoming', 'top'] : ['popular', 'new', 'top'];
   return tmdb ? ['popular', 'new', 'airing', 'upcoming', 'top'] : ['popular', 'new', 'top'];
 }
@@ -48,17 +48,27 @@ const isAbort = (e: unknown) => e instanceof Error && e.name === 'AbortError';
 const TV_NOISE = [10767, 10763];
 
 /** Public metadata only. No account, saved list or API key is sent to these services. */
+/** Kitsu subtypes and Jikan types behind each printed category. Manga search stays open to every subtype. */
+const printTypes = {
+  manga: { kitsu: 'manga,oneshot', jikan: 'manga' },
+  manhwa: { kitsu: 'manhwa', jikan: 'manhwa' },
+  novel: { kitsu: 'novel', jikan: 'lightnovel' },
+} as const;
+
 export async function browseWith(
   fetchJson: CatalogFetch,
-  kind: Kind,
+  catalogKind: CatalogKind,
   query: string,
   page: number,
   options: BrowseOptions = {},
 ): Promise<CatalogPage> {
   const size = 20;
   const feed = options.feed ?? 'popular';
-  if (!query && !feedsFor(kind, Boolean(options.tmdb)).includes(feed))
+  if (!query && !feedsFor(catalogKind, Boolean(options.tmdb)).includes(feed))
     throw new CatalogFailure('feedUnavailable', 400);
+  const kind = savedKind(catalogKind);
+  const print = catalogKind === 'anime' || catalogKind === 'film' || catalogKind === 'series' ? null : printTypes[catalogKind];
+  const subtypeFilter = print && !(query && catalogKind === 'manga');
 
   if (kind === 'anime' || kind === 'manga') {
     try {
@@ -67,6 +77,7 @@ export async function browseWith(
         'page[offset]': String((page - 1) * size),
         include: 'categories',
       });
+      if (print && subtypeFilter) params.set('filter[subtype]', print.kitsu);
       if (query) params.set('filter[text]', query);
       else {
         params.set('sort', feed === 'top' ? '-averageRating' : '-userCount');
@@ -92,6 +103,7 @@ export async function browseWith(
     } catch (e) {
       if (isAbort(e)) throw e;
       const params = new URLSearchParams({ page: String(page), limit: String(size), sfw: 'true' });
+      if (print && subtypeFilter) params.set('type', print.jikan);
       let path: string = `top/${kind}`;
       if (query) {
         path = kind;

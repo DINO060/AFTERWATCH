@@ -29,6 +29,8 @@ export function HeroCarousel({
   const [paused, setPaused] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [holding, setHolding] = useState(false);
   const [adding, setAdding] = useState('');
+  // Wide images that failed to load (some sources list ones that do not exist): use the cover instead.
+  const [brokenBackdrops, setBrokenBackdrops] = useState<Set<string>>(() => new Set());
   const swipe = useRef<{ x: number; y: number } | null>(null);
   const count = items.length;
   const current = Math.min(index, Math.max(count - 1, 0));
@@ -99,6 +101,7 @@ export function HeroCarousel({
           const key = `${item.catalog.source}:${item.catalog.id}`;
           const added = isAdded(item);
           const active = i === current;
+          const useBackdrop = Boolean(item.backdrop) && !brokenBackdrops.has(key);
           return (
             <article
               key={key}
@@ -108,10 +111,13 @@ export function HeroCarousel({
               aria-hidden={!active}
               inert={!active}
             >
-              {(item.backdrop || item.poster) && (
+              {(useBackdrop || item.poster) && (
                 <img
-                  className={`hero-bg ${item.backdrop ? '' : 'from-poster'}`}
-                  src={item.backdrop || item.poster}
+                  className={`hero-bg ${useBackdrop ? '' : 'from-poster'}`}
+                  src={useBackdrop ? item.backdrop : item.poster}
+                  onError={() => {
+                    if (useBackdrop) setBrokenBackdrops((old) => new Set(old).add(key));
+                  }}
                   alt=""
                   referrerPolicy="no-referrer"
                   loading={i === 0 ? 'eager' : 'lazy'}

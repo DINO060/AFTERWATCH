@@ -1,6 +1,6 @@
 import { browseWith, detailWith, CatalogFailure, type Feed, type TmdbFetch } from './catalog-gateway';
 import type { Lang } from './i18n';
-import type { Kind } from './watch';
+import type { CatalogKind, Kind } from './watch';
 export { CatalogFailure } from './catalog-gateway';
 const memo = new Map<string, { until: number; value: any }>();
 // URLs may carry the TMDB key: never log them, only the host.
@@ -48,7 +48,7 @@ function tmdbFetcher(lang: Lang): TmdbFetch | undefined {
   };
 }
 
-export const browseCatalog = (kind: Kind, query: string, page: number, feed: Feed, lang: Lang) =>
+export const browseCatalog = (kind: CatalogKind, query: string, page: number, feed: Feed, lang: Lang) =>
   browseWith(catalogJson, kind, query, page, { feed, lang, tmdb: tmdbFetcher(lang) });
 export const catalogDetail = (kind: Kind, source: string, id: string, lang: Lang) =>
   detailWith(catalogJson, kind, source, id, { lang, tmdb: tmdbFetcher(lang) });

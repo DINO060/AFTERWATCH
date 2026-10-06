@@ -8,13 +8,13 @@ const require = createRequire(import.meta.url);
 const ts = require(process.env.AFTERWATCH_TYPESCRIPT_PATH || 'typescript');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'afterwatch-test-'));
 try {
-  for (const name of ['catalog', 'catalog-gateway']) {
+  for (const name of ['catalog', 'catalog-gateway', 'watch']) {
     const input = fs.readFileSync(new URL(`../lib/${name}.ts`, import.meta.url), 'utf8');
     const js = ts
       .transpileModule(input, {
         compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
       })
-      .outputText.replaceAll("'./catalog'", "'./catalog.mjs'");
+      .outputText.replaceAll("'./catalog'", "'./catalog.mjs'").replaceAll("'./watch'", "'./watch.mjs'");
     fs.writeFileSync(path.join(temp, `${name}.mjs`), js);
   }
   const { browseWith, detailWith, feedsFor, currentSeason } = await import(
@@ -148,6 +148,38 @@ try {
   assert.deepEqual(currentSeason(new Date('2027-01-15T12:00:00Z')), { season: 'winter', year: 2027 });
   await assert.rejects(() => kitsuUrl('manga', 'upcoming'), { key: 'feedUnavailable', status: 400 });
   assert.deepEqual(feedsFor('film', false), ['popular', 'new', 'top']);
+
+  // Manhwa and light novels: own lists, saved as manga; manga feeds leave them out, manga search does not.
+  assert.match(await kitsuUrl('manhwa', 'popular'), /\/edge\/manga\?.*filter\[subtype\]=manhwa/);
+  assert.match(await kitsuUrl('novel', 'airing'), /filter\[subtype\]=novel.*filter\[status\]=current/);
+  assert.match(await kitsuUrl('manga', 'top'), /filter\[subtype\]=manga,oneshot/);
+  let mangaSearch = '';
+  await browseWith(async (url) => ((mangaSearch = decodeURIComponent(url)), { data: [] }), 'manga', 'solo', 1);
+  assert.ok(!mangaSearch.includes('filter[subtype]'), 'manga search covers every subtype');
+  let novelSearch = '';
+  await browseWith(async (url) => ((novelSearch = decodeURIComponent(url)), { data: [] }), 'novel', 'overlord', 1);
+  assert.ok(novelSearch.includes('filter[subtype]=novel'));
+  await assert.rejects(() => kitsuUrl('manhwa', 'upcoming'), { key: 'feedUnavailable' });
+  const manhwa = await browseWith(
+    async () => ({ data: [{ id: '9', attributes: { canonicalTitle: 'Solo Leveling', subtype: 'manhwa' } }] }),
+    'manhwa',
+    '',
+    1,
+  );
+  assert.equal(manhwa.results[0].kind, 'manga', 'saved as a manga title');
+  let jikanManhwa = '';
+  await browseWith(
+    async (url) => {
+      if (url.includes('kitsu.app')) throw Error('down');
+      jikanManhwa = url;
+      return { data: [], pagination: {} };
+    },
+    'novel',
+    '',
+    1,
+    { feed: 'popular' },
+  );
+  assert.match(jikanManhwa, /top\/manga\?.*type=lightnovel.*filter=bypopularity/);
   assert.deepEqual(feedsFor('film', true), ['popular', 'new', 'upcoming', 'top']);
 
   // Jikan fallback: the current season list for "new" anime.

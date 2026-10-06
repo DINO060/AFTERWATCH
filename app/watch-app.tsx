@@ -64,6 +64,7 @@ import {
   type Session,
   type WatchState,
   type Kind,
+  type CatalogKind,
   type Settings,
 } from '@/lib/watch';
 import InstallApp from './install-app';
@@ -189,7 +190,7 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
   });
   const [recovery, setRecovery] = useState(false);
   const [catalogTarget, setCatalogTarget] = useState<{
-    kind: Kind;
+    kind: CatalogKind;
     feed: Feed;
     query: string;
     nonce: number;
@@ -204,7 +205,7 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
     window.scrollTo({ top: 0 });
   };
   // "See all" on a home row, or a header search: open the catalog on that list.
-  const openCatalog = (kind: Kind, feed: Feed, query = '') => {
+  const openCatalog = (kind: CatalogKind, feed: Feed, query = '') => {
     setCatalogTarget({ kind, feed, query, nonce: Date.now() });
     navigate('catalog');
   };

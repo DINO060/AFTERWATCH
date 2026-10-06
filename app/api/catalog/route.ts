@@ -2,7 +2,7 @@
 import { browseCatalog, CatalogFailure } from '@/lib/catalog-server';
 import { allFeeds, type Feed } from '@/lib/catalog-gateway';
 import { langFromRequest, messages } from '@/lib/i18n';
-import type { Kind } from '@/lib/watch';
+import { catalogKinds, type CatalogKind } from '@/lib/watch';
 export async function GET(request: Request) {
   const lang = langFromRequest(request);
   const t = messages[lang].catalogErrors;
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const feed = p.get('feed') || 'popular';
     const page = Number(p.get('page') || 1);
     if (
-      !['anime', 'manga', 'series', 'film'].includes(kind) ||
+      !catalogKinds.includes(kind as CatalogKind) ||
       !allFeeds.includes(feed as Feed) ||
       q.length > 150 ||
       !Number.isInteger(page) ||
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       page > 500
     )
       return Response.json({ error: t.invalidSearch }, { status: 400 });
-    return Response.json(await browseCatalog(kind as Kind, q, page, feed as Feed, lang), {
+    return Response.json(await browseCatalog(kind as CatalogKind, q, page, feed as Feed, lang), {
       headers: { 'Cache-Control': 'private, max-age=120' },
     });
   } catch (e) {

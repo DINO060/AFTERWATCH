@@ -1,6 +1,6 @@
 import { browseWith, detailWith, CatalogFailure, type Feed } from './catalog-gateway';
 import type { Messages } from './i18n';
-import type { Kind } from './watch';
+import type { CatalogKind, Kind } from './watch';
 import type { CatalogItem, CatalogPage } from './catalog';
 
 async function readJson(response: Response) {
@@ -39,7 +39,7 @@ export function catalogErrorText(error: unknown, t: Messages): string {
   return t.catalogErrors.unavailable;
 }
 export async function loadCatalog(
-  kind: Kind,
+  kind: CatalogKind,
   query: string,
   page: number,
   signal?: AbortSignal,

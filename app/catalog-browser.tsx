@@ -13,6 +13,8 @@ import {
   LoaderCircle,
   ExternalLink,
   Flame,
+  Smartphone,
+  BookText,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -21,13 +23,15 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription, SheetHeader } from '
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
-import { type Kind, type Media } from '@/lib/watch';
+import { type CatalogKind, type Media } from '@/lib/watch';
 import { type CatalogItem, type CatalogPage, sameTitle } from '@/lib/catalog';
 import type { Messages } from '@/lib/i18n';
 import { useI18n } from './i18n-provider';
 const categories = [
   { key: 'anime', icon: Clapperboard },
   { key: 'manga', icon: BookOpen },
+  { key: 'manhwa', icon: Smartphone },
+  { key: 'novel', icon: BookText },
   { key: 'film', icon: Film },
   { key: 'series', icon: LibraryBig },
 ] as const;
@@ -35,7 +39,7 @@ import { loadCatalog, loadDetail as loadCatalogDetail, catalogErrorText } from '
 import { feedsFor, type Feed } from '@/lib/catalog-gateway';
 export { loadDetail as loadCatalogDetail } from '@/lib/catalog-client';
 
-export const feedLabel = (t: Messages, kind: Kind, feed: Feed) =>
+export const feedLabel = (t: Messages, kind: CatalogKind, feed: Feed) =>
   feed === 'new' && kind === 'anime' ? t.feeds.newAnime : t.feeds[feed];
 
 /** Source values (English or French) shown in the interface language when known. */
@@ -285,12 +289,12 @@ export default function CatalogBrowser({
   onDetail: (item: CatalogItem) => void;
   onManual: () => void;
   tmdb: boolean;
-  initialKind?: Kind;
+  initialKind?: CatalogKind;
   initialFeed?: Feed;
   initialQuery?: string;
 }) {
   const { t, locale } = useI18n();
-  const [kind, setKind] = useState<Kind>(initialKind);
+  const [kind, setKind] = useState<CatalogKind>(initialKind);
   const [feed, setFeed] = useState<Feed>(
     feedsFor(initialKind, tmdb).includes(initialFeed) ? initialFeed : 'popular',
   );
@@ -333,8 +337,8 @@ export default function CatalogBrowser({
   }, [kind, feed, search, page, retry]);
   const feeds = feedsFor(kind, tmdb);
   const changeKind = (v: string) => {
-    setKind(v as Kind);
-    if (!feedsFor(v as Kind, tmdb).includes(feed)) setFeed('popular');
+    setKind(v as CatalogKind);
+    if (!feedsFor(v as CatalogKind, tmdb).includes(feed)) setFeed('popular');
     setPage(1);
     setRetry(0);
   };
