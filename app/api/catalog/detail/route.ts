@@ -3,10 +3,11 @@ import { catalogDetail, CatalogFailure } from '@/lib/catalog-server';
 import { langFromRequest, messages } from '@/lib/i18n';
 import type { Kind } from '@/lib/watch';
 export async function GET(request: Request) {
-  const t = messages[langFromRequest(request)].catalogErrors;
+  const lang = langFromRequest(request);
+  const t = messages[lang].catalogErrors;
   try {
     const p = new URL(request.url).searchParams;
-    const item = await catalogDetail(p.get('kind') as Kind, p.get('source') || '', p.get('id') || '');
+    const item = await catalogDetail(p.get('kind') as Kind, p.get('source') || '', p.get('id') || '', lang);
     return Response.json({ item }, { headers: { 'Cache-Control': 'private, max-age=120' } });
   } catch (e) {
     if (e instanceof Response) return e;

@@ -59,6 +59,14 @@ const fr = {
   weekdaysShort: ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'],
   kinds: { anime: 'Anime', manga: 'Manga', series: 'Série', film: 'Film' },
   kindsPlural: { anime: 'Anime', manga: 'Mangas', series: 'Séries', film: 'Films' },
+  feeds: {
+    popular: 'Populaires',
+    new: 'Nouveautés',
+    newAnime: 'Cette saison',
+    airing: 'En cours',
+    upcoming: 'À venir',
+    top: 'Mieux notés',
+  },
   units: { anime: 'ép.', manga: 'chap.', series: 'ép.', film: 'film' },
   statuses: { watching: 'En cours', later: 'À commencer', paused: 'En pause', completed: 'Terminé' },
   nav: {
@@ -444,6 +452,8 @@ const fr = {
     sources: 'Sources :',
     sourcesNote: 'Les fiches et compteurs dépendent des informations disponibles dans ces catalogues.',
     notFoundManual: 'Titre introuvable ? Ajout manuel',
+    tmdbCredit:
+      'Films et séries : TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.',
     // Stored values from the sources (English from Jikan/TVmaze, French from older saves) shown in the UI language.
     releaseStatuses: {
       'Finished Airing': 'Diffusion terminée',
@@ -477,6 +487,7 @@ const fr = {
     allSourcesDown:
       'Les sources du catalogue ne répondent pas. Réessaie dans un instant ou essaie une autre catégorie.',
     invalidSearch: 'Recherche invalide.',
+    feedUnavailable: 'Ce filtre n’est pas disponible pour cette catégorie.',
     catalogDown: 'Le catalogue est temporairement indisponible. Réessaie dans un instant.',
     detailDown: 'La fiche est momentanément indisponible. Réessaie dans un instant.',
   },
@@ -583,6 +594,14 @@ const en: Messages = {
   weekdaysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
   kinds: { anime: 'Anime', manga: 'Manga', series: 'Series', film: 'Movie' },
   kindsPlural: { anime: 'Anime', manga: 'Manga', series: 'Series', film: 'Movies' },
+  feeds: {
+    popular: 'Popular',
+    new: 'New',
+    newAnime: 'This season',
+    airing: 'Airing',
+    upcoming: 'Upcoming',
+    top: 'Top rated',
+  },
   units: { anime: 'ep.', manga: 'ch.', series: 'ep.', film: 'movie' },
   statuses: { watching: 'In progress', later: 'Not started', paused: 'Paused', completed: 'Completed' },
   nav: {
@@ -966,6 +985,8 @@ const en: Messages = {
     sources: 'Sources:',
     sourcesNote: 'Details and counts depend on the information available in these catalogs.',
     notFoundManual: 'Can’t find a title? Add it manually',
+    tmdbCredit:
+      'Movies and series: TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.',
     releaseStatuses: {
       'Finished Airing': 'Finished airing',
       'Currently Airing': 'Currently airing',
@@ -997,6 +1018,7 @@ const en: Messages = {
     unavailable: 'Catalog temporarily unavailable.',
     allSourcesDown: 'The catalog sources aren’t responding. Try again shortly or try another category.',
     invalidSearch: 'Invalid search.',
+    feedUnavailable: 'This filter isn’t available for this category.',
     catalogDown: 'The catalog is temporarily unavailable. Try again shortly.',
     detailDown: 'These details are temporarily unavailable. Try again shortly.',
   },

@@ -21,7 +21,10 @@ const sourceUrl = z
   .max(2000)
   .refine(
     (s) =>
-      !s || /^https:\/\/(kitsu\.app|kitsu\.io|myanimelist\.net|www\.tvmaze\.com|www\.imdb\.com)\//.test(s),
+      !s ||
+      /^https:\/\/(kitsu\.app|kitsu\.io|myanimelist\.net|www\.tvmaze\.com|www\.imdb\.com|www\.themoviedb\.org)\//.test(
+        s,
+      ),
   );
 const mediaSchema = z
   .object({
@@ -38,7 +41,7 @@ const mediaSchema = z
     notes: z.string().max(2000),
     catalog: z
       .object({
-        source: z.enum(['jikan', 'kitsu', 'cinemeta', 'tvmaze']),
+        source: z.enum(['jikan', 'kitsu', 'cinemeta', 'tvmaze', 'tmdb']),
         id: z.string().max(50),
         synopsis: z.string().max(12000),
         genres: z.array(z.string().max(100)).max(20),

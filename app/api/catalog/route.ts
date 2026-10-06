@@ -1,23 +1,27 @@
 // Public metadata only; no collection or authentication data is returned.
 import { browseCatalog, CatalogFailure } from '@/lib/catalog-server';
+import { allFeeds, type Feed } from '@/lib/catalog-gateway';
 import { langFromRequest, messages } from '@/lib/i18n';
 import type { Kind } from '@/lib/watch';
 export async function GET(request: Request) {
-  const t = messages[langFromRequest(request)].catalogErrors;
+  const lang = langFromRequest(request);
+  const t = messages[lang].catalogErrors;
   try {
     const p = new URL(request.url).searchParams;
     const q = p.get('q')?.trim() || '';
     const kind = p.get('kind') || 'anime';
+    const feed = p.get('feed') || 'popular';
     const page = Number(p.get('page') || 1);
     if (
       !['anime', 'manga', 'series', 'film'].includes(kind) ||
+      !allFeeds.includes(feed as Feed) ||
       q.length > 150 ||
       !Number.isInteger(page) ||
       page < 1 ||
-      page > 10000
+      page > 500
     )
       return Response.json({ error: t.invalidSearch }, { status: 400 });
-    return Response.json(await browseCatalog(kind as Kind, q, page), {
+    return Response.json(await browseCatalog(kind as Kind, q, page, feed as Feed, lang), {
       headers: { 'Cache-Control': 'private, max-age=120' },
     });
   } catch (e) {

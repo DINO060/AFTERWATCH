@@ -1,4 +1,4 @@
-import { browseWith, detailWith, CatalogFailure } from './catalog-gateway';
+import { browseWith, detailWith, CatalogFailure, type Feed } from './catalog-gateway';
 import type { Messages } from './i18n';
 import type { Kind } from './watch';
 import type { CatalogItem, CatalogPage } from './catalog';
@@ -43,14 +43,15 @@ export async function loadCatalog(
   query: string,
   page: number,
   signal?: AbortSignal,
+  feed: Feed = 'popular',
 ): Promise<CatalogPage> {
   try {
-    const params = new URLSearchParams({ kind, q: query, page: String(page) });
+    const params = new URLSearchParams({ kind, q: query, page: String(page), feed });
     return await readJson(await fetch(`/api/catalog?${params}`, { signal, cache: 'no-store' }));
   } catch (e) {
     if (!shouldFallback(e, signal)) throw e;
     try {
-      return await browseWith(directFetch(signal), kind, query, page);
+      return await browseWith(directFetch(signal), kind, query, page, { feed });
     } catch (error) {
       if (signal?.aborted) throw error;
       throw new CatalogFailure('allSourcesDown');

@@ -1,5 +1,5 @@
 import type { Kind, Media } from './watch';
-export type CatalogSource = 'jikan' | 'kitsu' | 'cinemeta' | 'tvmaze';
+export type CatalogSource = 'jikan' | 'kitsu' | 'cinemeta' | 'tvmaze' | 'tmdb';
 export type CatalogInfo = {
   source: CatalogSource;
   id: string;
@@ -25,6 +25,10 @@ export type CatalogItem = {
   total: number;
   duration: number;
   subtitle: string;
+  /** Wide image for the home carousel; display only, never saved. */
+  backdrop?: string;
+  /** First release date (YYYY-MM-DD) when the source gives one; display only. */
+  startDate?: string;
 };
 export type CatalogPage = {
   results: CatalogItem[];
@@ -43,7 +47,9 @@ export function sameTitle(m: Media, item: CatalogItem) {
   );
 }
 export function mediaFromCatalog(item: CatalogItem): Media {
-  return { ...item, id: crypto.randomUUID(), priority: false, status: 'later', progress: 0, notes: '' };
+  // Display-only fields are not part of a saved title.
+  const { subtitle: _subtitle, backdrop: _backdrop, startDate: _startDate, ...saved } = item;
+  return { ...saved, id: crypto.randomUUID(), priority: false, status: 'later', progress: 0, notes: '' };
 }
 export function itemFromMedia(m: Media): CatalogItem {
   return {
@@ -85,6 +91,11 @@ export function cleanText(value: unknown, max = 12000) {
     .replace(/&nbsp;/g, ' ')
     .trim()
     .slice(0, max);
+}
+/** A YYYY-MM-DD day from a source date, or undefined. */
+export function isoDay(value: unknown): string | undefined {
+  const day = String(value || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined;
 }
 export function parseMinutes(value: unknown, fallback: number) {
   const text = String(value || '');
@@ -138,6 +149,8 @@ export function normalizeCinemeta(x: any, detail = false): CatalogItem {
     title: String(x.name || 'Sans titre').slice(0, 180),
     kind,
     poster: x.poster || '',
+    backdrop: x.background || '',
+    startDate: isoDay(x.released),
     sourceUrl: `https://www.imdb.com/title/${x.id}/`,
     total: kind === 'film' ? 1 : videos?.length || 0,
     duration: parseMinutes(x.runtime, kind === 'film' ? 120 : 45),
@@ -179,7 +192,8 @@ export function normalizeTVMaze(x: any): CatalogItem {
     poster: x.image?.original || x.image?.medium || '',
     sourceUrl: x.url,
     total,
-    duration: x.averageRuntime || x.runtime || 45,
+    duration: Math.min(600, x.averageRuntime || x.runtime || 45),
+    startDate: isoDay(x.premiered),
     subtitle: [x.premiered?.slice(0, 4), x.language].filter(Boolean).join(' · '),
     catalog: {
       source: 'tvmaze',
@@ -229,6 +243,8 @@ export function normalizeKitsu(resource: any, kind: 'anime' | 'manga', included:
     title: String(x.canonicalTitle || x.titles?.en || x.titles?.en_jp || 'Sans titre').slice(0, 180),
     kind,
     poster: x.posterImage?.large || x.posterImage?.medium || x.posterImage?.original || '',
+    backdrop: x.coverImage?.large || x.coverImage?.original || '',
+    startDate: isoDay(x.startDate),
     sourceUrl: `https://kitsu.app/${kind}/${encodeURIComponent(x.slug || resource.id)}`,
     total: (kind === 'manga' ? chapters : episodes) || 0,
     duration: Math.min(duration, 600),
@@ -248,6 +264,74 @@ export function normalizeKitsu(resource: any, kind: 'anime' | 'manga', included:
       releaseStatus: status[x.status] || cleanText(x.status, 100),
       format: cleanText(x.subtype, 100),
       durationKnown: kind === 'anime' && !!positive(x.episodeLength),
+    },
+  };
+}
+
+/** TMDB movie or TV result (list or detail). Detail responses add counts and available episodes. */
+export function normalizeTmdb(
+  x: any,
+  kind: 'film' | 'series',
+  genreNames: Record<number, string> = {},
+  detail = false,
+): CatalogItem {
+  const film = kind === 'film';
+  const positive = (v: any): number | null =>
+    typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null;
+  const date = isoDay(film ? x.release_date : x.first_air_date);
+  const runtime = film
+    ? positive(x.runtime)
+    : positive(x.episode_run_time?.[0] ?? x.last_episode_to_air?.runtime);
+  const episodes = !film && detail ? positive(x.number_of_episodes) : null;
+  let available: number | null = null;
+  const last = x.last_episode_to_air;
+  if (!film && detail && last && Array.isArray(x.seasons)) {
+    available =
+      x.seasons
+        .filter((season: any) => season.season_number > 0 && season.season_number < last.season_number)
+        .reduce((n: number, season: any) => n + (positive(season.episode_count) || 0), 0) +
+      (positive(last.episode_number) || 0);
+  }
+  const genres = (
+    Array.isArray(x.genres)
+      ? x.genres.map((g: any) => g?.name)
+      : (x.genre_ids || []).map((id: number) => genreNames[id])
+  )
+    .filter(Boolean)
+    .map(String)
+    .slice(0, 20);
+  // A score from a handful of votes is noise.
+  const score =
+    typeof x.vote_average === 'number' && x.vote_count >= 20
+      ? Math.min(10, Math.max(0, x.vote_average))
+      : null;
+  return {
+    title: String(
+      (film ? x.title : x.name) || (film ? x.original_title : x.original_name) || 'Sans titre',
+    ).slice(0, 180),
+    kind,
+    poster: x.poster_path ? `https://image.tmdb.org/t/p/w500${x.poster_path}` : '',
+    backdrop: x.backdrop_path ? `https://image.tmdb.org/t/p/w1280${x.backdrop_path}` : '',
+    startDate: date,
+    sourceUrl: `https://www.themoviedb.org/${film ? 'movie' : 'tv'}/${x.id}`,
+    total: film ? 1 : episodes || 0,
+    duration: Math.min(600, runtime || (film ? 120 : 45)),
+    subtitle: date ? date.slice(0, 4) : '',
+    catalog: {
+      source: 'tmdb',
+      id: String(x.id),
+      synopsis: cleanText(x.overview),
+      genres,
+      year: date ? date.slice(0, 4) : '',
+      score,
+      episodes,
+      chapters: null,
+      volumes: null,
+      seasons: !film && detail ? positive(x.number_of_seasons) : null,
+      available,
+      releaseStatus: cleanText(x.status, 100),
+      format: film ? 'Film' : 'Série',
+      durationKnown: Boolean(runtime),
     },
   };
 }
