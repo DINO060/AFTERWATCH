@@ -47,9 +47,22 @@ export function sameTitle(m: Media, item: CatalogItem) {
   );
 }
 export function mediaFromCatalog(item: CatalogItem): Media {
-  // Display-only fields are not part of a saved title.
-  const { subtitle: _subtitle, backdrop: _backdrop, startDate: _startDate, ...saved } = item;
-  return { ...saved, id: crypto.randomUUID(), priority: false, status: 'later', progress: 0, notes: '' };
+  // Display-only fields (subtitle, backdrop, startDate) are not part of a saved title.
+  const { title, kind, poster, sourceUrl, total, duration, catalog } = item;
+  return {
+    title,
+    kind,
+    poster,
+    sourceUrl,
+    total,
+    duration,
+    catalog,
+    id: crypto.randomUUID(),
+    priority: false,
+    status: 'later',
+    progress: 0,
+    notes: '',
+  };
 }
 export function itemFromMedia(m: Media): CatalogItem {
   return {

@@ -7,7 +7,6 @@ import {
   Layers3,
   Sparkles,
   Bell,
-  Moon,
   LockKeyhole,
   Clock3,
   Flame,
@@ -27,22 +26,8 @@ import {
   Film,
   CalendarPlus,
   X,
-  Compass,
   Info,
-  Languages,
 } from 'lucide-react';
-import {
-  Sidebar,
-  SidebarProvider,
-  SidebarContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarFooter,
-  SidebarTrigger,
-  useSidebar,
-} from '@/components/ui/sidebar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -84,19 +69,12 @@ import {
 import InstallApp from './install-app';
 import CatalogBrowser, { CatalogDetail } from './catalog-browser';
 import { type CatalogItem, mediaFromCatalog, sameTitle, itemFromMedia } from '@/lib/catalog';
-import AuthPanel, { type AccountUser, type AuthStatus } from './auth-panel';
+import AuthPanel, { type AuthStatus } from './auth-panel';
+import { SiteHeader, BottomNav, type View } from './site-header';
+import HomeView from './home-view';
+import type { Feed } from '@/lib/catalog-gateway';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { useI18n } from './i18n-provider';
-type View = 'catalog' | 'today' | 'collection' | 'planning' | 'assistant' | 'reminders' | 'account';
-const nav: { id: View; icon: typeof Play }[] = [
-  { id: 'catalog', icon: Compass },
-  { id: 'today', icon: Play },
-  { id: 'collection', icon: Layers3 },
-  { id: 'planning', icon: CalendarDays },
-  { id: 'assistant', icon: Sparkles },
-  { id: 'reminders', icon: Bell },
-  { id: 'account', icon: KeyRound },
-];
 const formatDate = (
   locale: string,
   date: string,
@@ -141,77 +119,6 @@ function Choice({
     </Select>
   );
 }
-function AppNavigation({
-  view,
-  setView,
-  priority,
-  user,
-}: {
-  view: View;
-  setView: (v: View) => void;
-  priority: number;
-  user: AccountUser | null;
-}) {
-  const { setOpenMobile } = useSidebar();
-  const { t } = useI18n();
-  return (
-    <Sidebar>
-      <SidebarHeader>
-        <div className="brand">
-          <span className="brand-icon">
-            <Play fill="currentColor" size={18} />
-          </span>
-          afterwatch<span className="brand-dot">.</span>
-        </div>
-      </SidebarHeader>
-      <SidebarContent>
-        <p className="nav-caption">{t.nav.caption}</p>
-        <SidebarMenu>
-          {nav.map(({ id, icon: Icon }) => (
-            <SidebarMenuItem key={id}>
-              <SidebarMenuButton
-                onClick={() => {
-                  setView(id);
-                  setOpenMobile(false);
-                }}
-                isActive={view === id}
-                className="nav-link"
-              >
-                <Icon />
-                <span>{t.nav[id]}</span>
-                {id === 'collection' && priority > 0 && <span className="nav-count">{priority}</span>}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
-        <div className="sidebar-note">
-          <Moon size={21} />
-          <strong>{t.nav.noteTitle}</strong>
-          <p>
-            {t.nav.noteLine1}
-            <br />
-            {t.nav.noteLine2}
-          </p>
-        </div>
-      </SidebarContent>
-      <SidebarFooter>
-        <button
-          className="profile"
-          onClick={() => {
-            setView('account');
-            setOpenMobile(false);
-          }}
-        >
-          <span className="avatar">{user?.displayName.slice(0, 1).toUpperCase() || 'A'}</span>
-          <div>
-            {user?.displayName || t.nav.browsing}
-            <small>{user ? t.nav.account : t.nav.signIn}</small>
-          </div>
-        </button>
-      </SidebarFooter>
-    </Sidebar>
-  );
-}
 function Blank({
   title,
   description,
@@ -251,8 +158,8 @@ function MediaImage({ media, className }: { media: Media; className?: string }) 
     </div>
   );
 }
-export default function WatchApp() {
-  const { t, lang, locale, setLang } = useI18n();
+export default function WatchApp({ tmdb }: { tmdb: boolean }) {
+  const { t, locale } = useI18n();
   // load() is an effect dependency: read the texts through a ref so a language switch does not refetch.
   const tRef = useRef(t);
   useEffect(() => {
@@ -274,7 +181,36 @@ export default function WatchApp() {
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [aiReady, setAiReady] = useState(false);
-  const [view, setView] = useState<View>('catalog');
+  const [view, setView] = useState<View>('home');
+  const [catalogTarget, setCatalogTarget] = useState<{
+    kind: Kind;
+    feed: Feed;
+    query: string;
+    nonce: number;
+  }>({
+    kind: 'anime',
+    feed: 'popular',
+    query: '',
+    nonce: 0,
+  });
+  const navigate = (next: View) => {
+    setView(next);
+    window.scrollTo({ top: 0 });
+  };
+  // "See all" on a home row, or a header search: open the catalog on that list.
+  const openCatalog = (kind: Kind, feed: Feed, query = '') => {
+    setCatalogTarget({ kind, feed, query, nonce: Date.now() });
+    navigate('catalog');
+  };
+  // After a profile change: refresh the account only, keeping the loaded collection on screen.
+  const refreshAccount = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/user', { cache: 'no-store' });
+      if (!response.ok) return;
+      const account: AuthStatus = await response.json();
+      if (account.user && account.user.id === authUserId.current) setAuth(account);
+    } catch {}
+  }, []);
   const [catalogDetail, setCatalogDetail] = useState<CatalogItem | null>(null);
   const [filter, setFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -482,7 +418,6 @@ export default function WatchApp() {
   }, [state, loaded, t]);
   const today = now.date || zonedNow(state.settings.timezone).date;
   const active = state.media.filter((m) => m.status !== 'completed');
-  const priorities = active.filter((m) => m.priority);
   const todaySessions = state.sessions
     .filter((s) => s.date === today)
     .sort((a, b) => a.time.localeCompare(b.time));
@@ -681,91 +616,64 @@ export default function WatchApp() {
     </article>
   );
   return (
-    <SidebarProvider>
+    <div className="app-shell">
       <Toaster theme="dark" position="bottom-right" richColors />
-      <AppNavigation view={view} setView={setView} priority={priorities.length} user={auth.user} />
-      <main className="main">
-        <header className="topbar">
-          <div className="topbar-title">
-            <SidebarTrigger aria-label={t.nav.openMenu} />
-            <span>{t.nav[view]}</span>
-          </div>
-          <div className="topbar-right">
-            <InstallApp />
-            <button
-              className="ghost-btn small-btn lang-switch"
-              aria-label={t.langSwitch.aria}
-              title={t.langSwitch.aria}
-              onClick={() => setLang(lang === 'fr' ? 'en' : 'fr')}
-            >
-              <Languages size={15} />
-              <span>{t.langSwitch.label}</span>
-            </button>
-            <span className="private-badge">
-              <LockKeyhole size={13} />
-              {saving ? t.topbar.saving : auth.user ? t.topbar.privateSpace : t.topbar.publicCatalog}
-            </span>
-            <button
-              className="icon-btn"
-              aria-label={t.topbar.openReminders}
-              onClick={() => setView('reminders')}
-            >
-              <Bell size={18} />
-            </button>
-            <button className="secondary small-btn" onClick={() => setView('account')}>
-              {auth.user ? t.nav.account : t.nav.signIn}
+      <SiteHeader
+        view={view}
+        onNavigate={navigate}
+        user={auth.user}
+        authChecked={authChecked}
+        saving={saving}
+        onSearch={(query) => openCatalog(catalogTarget.kind, 'popular', query)}
+        onProfileChange={refreshAccount}
+        onSignedOut={() => window.location.reload()}
+      />
+      <main className="workspace">
+        {error && (
+          <div className="error-banner" role="alert">
+            <span>{error}</span>
+            <button className="secondary small-btn" onClick={load}>
+              <RefreshCw size={14} />
+              {t.common.reload}
             </button>
           </div>
-        </header>
-        <div className="workspace">
-          {error && (
-            <div className="error-banner" role="alert">
-              <span>{error}</span>
-              <button className="secondary small-btn" onClick={load}>
-                <RefreshCw size={14} />
-                {t.common.reload}
+        )}
+        {reminder && (
+          <div className="notification-banner" role="status">
+            <Bell size={20} />
+            <p>
+              {t.reminder.banner(
+                state.media.find((m) => m.id === reminder.mediaId)?.title || '',
+                reminder.duration,
+              )}
+            </p>
+            <div className="row">
+              <button
+                className="secondary small-btn"
+                onClick={() => {
+                  navigate('planning');
+                  setReminder(null);
+                }}
+              >
+                {t.reminder.seeSession}
+              </button>
+              <button className="icon-btn" aria-label={t.reminder.close} onClick={() => setReminder(null)}>
+                <X size={16} />
               </button>
             </div>
-          )}
-          {reminder && (
-            <div className="notification-banner" role="status">
-              <Bell size={20} />
-              <p>
-                {t.reminder.banner(
-                  state.media.find((m) => m.id === reminder.mediaId)?.title || '',
-                  reminder.duration,
-                )}
-              </p>
-              <div className="row">
-                <button
-                  className="secondary small-btn"
-                  onClick={() => {
-                    setView('today');
-                    setReminder(null);
-                  }}
-                >
-                  {t.reminder.seeSession}
-                </button>
-                <button className="icon-btn" aria-label={t.reminder.close} onClick={() => setReminder(null)}>
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
+        )}
+        {view !== 'home' && (
           <div className="page-heading">
             <div>
-              <p className="eyebrow">
-                {view === 'today'
-                  ? fmtDate(today, { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()
-                  : t.app.eyebrow}
-              </p>
+              <p className="eyebrow">{t.app.eyebrow}</p>
               <h1>{t.headings[view]}</h1>
               <p>
                 {view === 'planning' ? t.subheadings.planning(state.settings.budget) : t.subheadings[view]}
               </p>
             </div>
-            {['today', 'collection'].includes(view) ? (
-              <button className="primary" disabled={!canAct} onClick={() => setView('catalog')}>
+            {view === 'collection' ? (
+              <button className="primary" disabled={!canAct} onClick={() => navigate('catalog')}>
                 <Plus size={18} />
                 {t.app.browseCatalog}
               </button>
@@ -774,492 +682,384 @@ export default function WatchApp() {
                 <CalendarDays size={17} />
                 {t.app.prepareWeek}
               </button>
-            ) : view === 'reminders' ? (
-              <button className="secondary" disabled={!canAct} onClick={() => setSettingsOpen(true)}>
-                <Settings2 size={17} />
-                {t.app.myHours}
-              </button>
             ) : null}
           </div>
-          {view === 'catalog' && authChecked && !auth.user && (
-            <p className="notice">
-              {t.app.catalogNotice}{' '}
-              <button className="ghost-btn small-btn" onClick={() => setView('account')}>
-                {t.app.signInToSaveTitles}
-              </button>
-            </p>
-          )}
-          {authChecked && !auth.user && !['catalog', 'account'].includes(view) ? (
-            <AuthPanel {...auth} />
-          ) : !loaded && !error && !['catalog', 'account'].includes(view) ? (
-            <div className="loading-grid" aria-label={t.app.loadingCollection}>
-              <Skeleton className="skeleton-block h-52 w-full" />
-              <Skeleton className="skeleton-block h-24 w-full" />
-              <Skeleton className="skeleton-block h-64 w-full" />
-            </div>
-          ) : loaded || ['catalog', 'account'].includes(view) ? (
-            <>
-              {view === 'account' &&
-                (authChecked ? (
-                  <AuthPanel {...auth} />
-                ) : (
-                  <p className="inline-note" role="status">
-                    {t.app.checkingSignIn}
-                  </p>
-                ))}
-              {view === 'today' && (
+        )}
+        {view === 'catalog' && authChecked && !auth.user && (
+          <p className="notice">
+            {t.app.catalogNotice}{' '}
+            <button className="ghost-btn small-btn" onClick={() => setView('account')}>
+              {t.app.signInToSaveTitles}
+            </button>
+          </p>
+        )}
+        {authChecked && !auth.user && !['home', 'catalog', 'account'].includes(view) ? (
+          <AuthPanel {...auth} />
+        ) : !loaded && !error && !['home', 'catalog', 'account'].includes(view) ? (
+          <div className="loading-grid" aria-label={t.app.loadingCollection}>
+            <Skeleton className="skeleton-block h-52 w-full" />
+            <Skeleton className="skeleton-block h-24 w-full" />
+            <Skeleton className="skeleton-block h-64 w-full" />
+          </div>
+        ) : loaded || ['home', 'catalog', 'account'].includes(view) ? (
+          <>
+            {view === 'account' &&
+              (authChecked ? (
                 <>
-                  <section className="welcome-banner">
-                    <img src="/night-city.webp" alt={t.today.bannerAlt} />
-                    <div className="banner-content">
-                      <span className="tag">
-                        {todaySessions.some((s) => !s.done) ? t.today.tagSession : t.today.tagResume}
-                      </span>
-                      <h2>
-                        {todaySessions.some((s) => !s.done)
-                          ? state.media.find((m) => m.id === todaySessions.find((s) => !s.done)?.mediaId)
-                              ?.title
-                          : t.today.oneEpisode}
-                      </h2>
-                      <p>
-                        {todaySessions.length
-                          ? t.today.remaining(
-                              todaySessions.filter((s) => !s.done).length,
-                              todaySessions.filter((s) => !s.done).reduce((n, s) => n + s.duration, 0),
-                            )
-                          : t.today.simpleEvening}
-                      </p>
-                      <button
-                        className="secondary small-btn"
-                        onClick={() => (active.length ? setView('planning') : setView('catalog'))}
-                      >
-                        {active.length ? <CalendarDays size={15} /> : <Plus size={15} />}{' '}
-                        {active.length ? t.today.seeSchedule : t.today.startCollection}
-                      </button>
-                    </div>
-                  </section>
-                  <div className="stats-grid">
-                    <div className="stat">
-                      <div className="stat-label">
-                        <Layers3 size={20} />
-                        <span>{t.today.toResume}</span>
-                      </div>
-                      <strong>{active.length}</strong>
-                    </div>
-                    <div className="stat">
-                      <div className="stat-label">
-                        <Flame size={20} />
-                        <span>{t.today.priorities}</span>
-                      </div>
-                      <strong>{priorities.length}</strong>
-                    </div>
-                    <div className="stat">
-                      <div className="stat-label">
-                        <Clock3 size={20} />
-                        <span>{t.today.perDay}</span>
-                      </div>
-                      <strong>{state.settings.budget === 60 ? '1 h' : `${state.settings.budget} m`}</strong>
-                    </div>
+                  <AuthPanel {...auth} onProfileChange={refreshAccount} />
+                  <div className="install-row">
+                    <InstallApp />
                   </div>
-                  <div className="two-col">
-                    <section className="panel">
+                </>
+              ) : (
+                <p className="inline-note" role="status">
+                  {t.app.checkingSignIn}
+                </p>
+              ))}
+            {view === 'home' && (
+              <HomeView
+                tmdb={tmdb}
+                collection={state.media}
+                saving={saving}
+                onAdd={addCatalog}
+                onDetail={setCatalogDetail}
+                onSeeAll={(kind, feed) => openCatalog(kind, feed)}
+                tonight={
+                  auth.user && loaded ? (
+                    <section className="panel tonight-panel">
                       <div className="section-heading">
                         <h2>
                           <Play size={18} />
-                          {t.today.todayProgram}
+                          {t.home.tonight}
                         </h2>
-                        <span className="muted-count">{t.today.sessions(todaySessions.length)}</span>
+                        <span className="muted-count">
+                          {t.today.perDayLine(state.settings.time, state.settings.budget)}
+                        </span>
                       </div>
                       {todaySessions.length ? (
                         todaySessions.map(sessionRow)
                       ) : (
-                        <Blank
-                          title={t.today.freeEvening}
-                          description={t.today.freeEveningHint}
-                          action={
-                            <button
-                              className="secondary small-btn"
-                              onClick={() =>
-                                state.media.length ? setSessionDialog({ date: today }) : setView('catalog')
-                              }
-                            >
-                              <Plus size={15} />
-                              {t.today.planSession}
-                            </button>
-                          }
-                        />
+                        <p className="inline-note">{t.home.tonightEmpty}</p>
                       )}
-                    </section>
-                    <section className="panel">
-                      <div className="section-heading">
-                        <h2>{t.today.nextDays}</h2>
-                        <button
-                          className="icon-btn"
-                          aria-label={t.today.adjustHours}
-                          onClick={() => setSettingsOpen(true)}
-                        >
-                          <Settings2 size={17} />
+                      <div className="row flex-wrap mt-24">
+                        <button className="secondary small-btn" onClick={() => navigate('planning')}>
+                          <CalendarDays size={15} />
+                          {t.today.organizeWeek}
+                        </button>
+                        <button className="ghost-btn small-btn" onClick={() => navigate('collection')}>
+                          <Layers3 size={15} />
+                          {t.shell.myList}
                         </button>
                       </div>
-                      <div className="mini-week">
-                        {Array.from({ length: 7 }, (_, i) => dayPlus(today, i)).map((d, i) => (
-                          <button
-                            key={d}
-                            className={`mini-day ${i === 0 ? 'today' : ''} ${state.sessions.some((s) => s.date === d) ? 'has-plan' : ''}`}
-                            onClick={() => {
-                              setWeekOffset(0);
-                              setView('planning');
-                            }}
-                          >
-                            <span>{t.weekdaysShort[new Date(d + 'T12:00:00').getDay()]}</span>
-                            <b>{new Date(d + 'T12:00:00').getDate()}</b>
-                            <i />
-                          </button>
-                        ))}
-                      </div>
-                      <p className="inline-note">
-                        <Clock3 size={15} />
-                        {t.today.perDayLine(state.settings.time, state.settings.budget)}
-                      </p>
-                      <button
-                        className="secondary full mt-24"
-                        onClick={() => {
-                          setWeekOffset(0);
-                          setView('planning');
-                        }}
-                      >
-                        {t.today.organizeWeek}
-                      </button>
                     </section>
-                  </div>
-                  <section className="mt-24">
-                    <div className="section-heading">
-                      <h2>
-                        <Flame size={20} />
-                        {t.today.topOfList}
-                      </h2>
-                      <button
-                        className="ghost-btn small-btn"
-                        onClick={() => {
-                          setPriorityFilter('priority');
-                          setView('collection');
-                        }}
-                      >
-                        {t.today.seeAll}
-                      </button>
-                    </div>
-                    {priorities.length ? (
-                      <div className="media-grid">{priorities.slice(0, 4).map(mediaCard)}</div>
-                    ) : (
-                      <div className="panel">
-                        <p className="inline-note">
-                          <Flame size={17} />
-                          {t.today.flameHint}
-                        </p>
-                      </div>
-                    )}
-                  </section>
-                </>
-              )}
-              {view === 'catalog' && (
-                <CatalogBrowser
-                  collection={state.media}
-                  saving={saving}
-                  onAdd={addCatalog}
-                  onDetail={setCatalogDetail}
-                  onManual={() => add()}
-                />
-              )}
-              {view === 'collection' && (
-                <>
-                  <Tabs value={filter} onValueChange={setFilter} className="media-tabs">
-                    <TabsList aria-label={t.collection.contentType}>
-                      <TabsTrigger value="all">
-                        {t.collection.all} <span className="muted-count">{state.media.length}</span>
+                  ) : null
+                }
+              />
+            )}
+            {view === 'catalog' && (
+              <CatalogBrowser
+                key={catalogTarget.nonce}
+                tmdb={tmdb}
+                initialKind={catalogTarget.kind}
+                initialFeed={catalogTarget.feed}
+                initialQuery={catalogTarget.query}
+                collection={state.media}
+                saving={saving}
+                onAdd={addCatalog}
+                onDetail={setCatalogDetail}
+                onManual={() => add()}
+              />
+            )}
+            {view === 'collection' && (
+              <>
+                <Tabs value={filter} onValueChange={setFilter} className="media-tabs">
+                  <TabsList aria-label={t.collection.contentType}>
+                    <TabsTrigger value="all">
+                      {t.collection.all} <span className="muted-count">{state.media.length}</span>
+                    </TabsTrigger>
+                    {kindKeys.map((v) => (
+                      <TabsTrigger value={v} key={v}>
+                        {t.kindsPlural[v]}
                       </TabsTrigger>
-                      {kindKeys.map((v) => (
-                        <TabsTrigger value={v} key={v}>
-                          {t.kindsPlural[v]}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                    <div className="toolbar">
-                      <div className="filter-line">
-                        <div className="search-field">
-                          <Search size={17} />
-                          <input
-                            aria-label={t.collection.searchAria}
-                            placeholder={t.collection.searchPlaceholder}
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                          />
-                        </div>
-                        <Choice
-                          value={priorityFilter}
-                          onChange={setPriorityFilter}
-                          label={t.collection.filterAria}
-                          options={t.collection.filters}
+                    ))}
+                  </TabsList>
+                  <div className="toolbar">
+                    <div className="filter-line">
+                      <div className="search-field">
+                        <Search size={17} />
+                        <input
+                          aria-label={t.collection.searchAria}
+                          placeholder={t.collection.searchPlaceholder}
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
                         />
                       </div>
-                      <span className="muted-count">{t.collection.titles(filtered.length)}</span>
+                      <Choice
+                        value={priorityFilter}
+                        onChange={setPriorityFilter}
+                        label={t.collection.filterAria}
+                        options={t.collection.filters}
+                      />
                     </div>
-                    {['all', ...kindKeys].map((tab) => (
-                      <TabsContent value={tab} key={tab}>
-                        {filtered.length ? (
-                          <div className="media-grid">{filtered.map(mediaCard)}</div>
-                        ) : (
-                          <div className="empty-collection">
-                            <Blank
-                              title={state.media.length ? t.collection.noMatch : t.collection.empty}
-                              description={
-                                state.media.length ? t.collection.noMatchHint : t.collection.emptyHint
-                              }
-                              action={
-                                <button className="primary" onClick={() => setView('catalog')}>
-                                  <Plus size={17} />
-                                  {t.app.browseCatalog}
-                                </button>
-                              }
-                            />
-                          </div>
-                        )}
-                      </TabsContent>
-                    ))}
-                  </Tabs>
-                </>
-              )}
-              {view === 'planning' && (
-                <>
-                  <div className="row spread flex-wrap">
-                    <p className="inline-note">
-                      <Flame size={17} />
-                      {t.planning.priorityFirst}
-                    </p>
-                    <button className="secondary small-btn" onClick={() => setSettingsOpen(true)}>
-                      <Settings2 size={15} />
-                      {state.settings.budget} min · {state.settings.time}
-                    </button>
+                    <span className="muted-count">{t.collection.titles(filtered.length)}</span>
                   </div>
-                  <div className="week-heading">
-                    <h2>
-                      {fmtDate(start)} – {fmtDate(dayPlus(start, 6))}
-                    </h2>
-                    <div className="row">
-                      <button
-                        className="icon-btn"
-                        aria-label={t.planning.previousWeek}
-                        onClick={() => setWeekOffset((v) => v - 1)}
-                      >
-                        <ChevronLeft size={20} />
-                      </button>
-                      <button className="ghost-btn small-btn" onClick={() => setWeekOffset(0)}>
-                        {t.planning.today}
-                      </button>
-                      <button
-                        className="icon-btn"
-                        aria-label={t.planning.nextWeek}
-                        onClick={() => setWeekOffset((v) => v + 1)}
-                      >
-                        <ChevronRight size={20} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="week-grid">
-                    {week.map((date) => {
-                      const sessions = state.sessions
-                        .filter((s) => s.date === date)
-                        .sort((a, b) => a.time.localeCompare(b.time));
-                      return (
-                        <section className={`day-column ${date === today ? 'is-today' : ''}`} key={date}>
-                          <div className="day-heading">
-                            <span>{t.weekdaysShort[new Date(date + 'T12:00:00').getDay()]}</span>
-                            <b>{new Date(date + 'T12:00:00').getDate()}</b>
-                          </div>
-                          {sessions.map((s) => {
-                            const m = state.media.find((m) => m.id === s.mediaId);
-                            return m ? (
-                              <div
-                                className={`plan-item ${m.priority ? 'priority' : ''} ${s.done ? 'done' : ''}`}
-                                key={s.id}
-                              >
-                                <small>
-                                  {s.time} · {s.duration} min
-                                </small>
-                                <p>{m.title}</p>
-                                <small>
-                                  {m.kind === 'film'
-                                    ? t.kinds.film
-                                    : `${t.units[m.kind]} ${s.from}${s.to > s.from ? `–${s.to}` : ''}`}
-                                </small>
-                                <div className="plan-actions">
-                                  <button
-                                    className="icon-btn"
-                                    aria-label={t.media.finish(m.title)}
-                                    disabled={s.done || !canAct}
-                                    onClick={() => finish(s)}
-                                  >
-                                    <Check size={15} />
-                                  </button>
-                                  <button
-                                    className="icon-btn"
-                                    aria-label={t.planning.move(m.title)}
-                                    onClick={() =>
-                                      setSessionDialog({ date: s.date, mediaId: s.mediaId, session: s })
-                                    }
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-                                  <button
-                                    className="icon-btn"
-                                    aria-label={t.planning.removeSession(m.title)}
-                                    disabled={!canAct}
-                                    onClick={() =>
-                                      commit({
-                                        ...state,
-                                        sessions: state.sessions.filter((x) => x.id !== s.id),
-                                      })
-                                    }
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                              </div>
-                            ) : null;
-                          })}
-                          {!sessions.length && (
-                            <p className="day-empty">
-                              {state.settings.days.includes(new Date(date + 'T12:00:00').getDay())
-                                ? t.planning.freeEvening
-                                : t.planning.dayOff}
-                            </p>
-                          )}
-                          <button
-                            className="plan-add"
-                            onClick={() => (state.media.length ? setSessionDialog({ date }) : add())}
-                          >
-                            <Plus size={13} />
-                            {t.planning.addSession}
-                          </button>
-                          {sessions.length > 0 && (
-                            <p className="day-total">
-                              {sessions.reduce((n, s) => n + s.duration, 0)} / {state.settings.budget} min
-                            </p>
-                          )}
-                        </section>
-                      );
-                    })}
-                  </div>
-                  <p className="form-hint mt-24">{t.planning.hint(state.settings.timezone)}</p>
-                </>
-              )}
-              {view === 'assistant' && (
-                <Assistant
-                  key={auth.user?.id}
-                  expectedUserId={auth.user?.id || ''}
-                  aiReady={aiReady}
-                  state={state}
-                  onPlanning={() => setView('planning')}
-                />
-              )}
-              {view === 'reminders' && (
-                <div className="two-col">
-                  <section className="panel">
-                    <div className="section-heading">
-                      <h2>
-                        <Bell size={18} />
-                        {t.reminders.upcoming}
-                      </h2>
-                    </div>
-                    {upcoming.length ? (
-                      upcoming.slice(0, 20).map((s) => (
-                        <div key={s.id}>
-                          <p className="form-hint mt-24">
-                            {fmtDate(s.date, { weekday: 'long', day: 'numeric', month: 'long' })}
-                          </p>
-                          {sessionRow(s)}
+                  {['all', ...kindKeys].map((tab) => (
+                    <TabsContent value={tab} key={tab}>
+                      {filtered.length ? (
+                        <div className="media-grid">{filtered.map(mediaCard)}</div>
+                      ) : (
+                        <div className="empty-collection">
+                          <Blank
+                            title={state.media.length ? t.collection.noMatch : t.collection.empty}
+                            description={
+                              state.media.length ? t.collection.noMatchHint : t.collection.emptyHint
+                            }
+                            action={
+                              <button className="primary" onClick={() => navigate('catalog')}>
+                                <Plus size={17} />
+                                {t.app.browseCatalog}
+                              </button>
+                            }
+                          />
                         </div>
-                      ))
-                    ) : (
-                      <Blank
-                        title={t.reminders.nothingPlanned}
-                        description={t.reminders.nothingPlannedHint}
-                        action={
-                          <button className="secondary" onClick={() => setView('planning')}>
-                            {t.reminders.openPlanning}
-                          </button>
-                        }
-                      />
-                    )}
-                  </section>
-                  <section className="panel">
-                    <div className="section-heading">
-                      <h2>{t.reminders.myNotifications}</h2>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <h3>{t.reminders.inApp}</h3>
-                        <p>{t.reminders.inAppHint}</p>
-                      </div>
-                      <Switch
-                        checked={state.settings.reminders}
-                        disabled={!canAct}
-                        aria-label={t.reminders.inAppAria}
-                        onCheckedChange={(v) =>
-                          commit({ ...state, settings: { ...state.settings, reminders: v } })
-                        }
-                      />
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <h3>{t.reminders.browser}</h3>
-                        <p>
-                          {permission === 'granted'
-                            ? t.reminders.granted
-                            : permission === 'denied'
-                              ? t.reminders.denied
-                              : t.reminders.ask}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      className="secondary full"
-                      onClick={async () => {
-                        if (!('Notification' in window)) {
-                          toast.info(t.toasts.notificationsUnsupported);
-                          return;
-                        }
-                        try {
-                          const p = await Notification.requestPermission();
-                          setPermission(p);
-                          toast.info(
-                            p === 'granted' ? t.toasts.notificationsAllowed : t.toasts.inAppStillAvailable,
-                          );
-                        } catch {
-                          toast.info(t.toasts.useInApp);
-                        }
-                      }}
-                      disabled={permission === 'granted' || permission === 'denied'}
-                    >
-                      <Bell size={16} />
-                      {permission === 'granted' ? t.reminders.allowedButton : t.reminders.allowButton}
-                    </button>
-                    <p className="notice">{t.reminders.keepOpen}</p>
-                    <p className="subdued">
-                      {t.reminders.usualTime} <span className="accent-text">{state.settings.time}</span>
-                      <br />
-                      {state.settings.timezone}
-                    </p>
-                  </section>
+                      )}
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              </>
+            )}
+            {view === 'planning' && (
+              <>
+                <div className="row spread flex-wrap">
+                  <p className="inline-note">
+                    <Flame size={17} />
+                    {t.planning.priorityFirst}
+                  </p>
+                  <button className="secondary small-btn" onClick={() => setSettingsOpen(true)}>
+                    <Settings2 size={15} />
+                    {state.settings.budget} min · {state.settings.time}
+                  </button>
                 </div>
-              )}
-              <p className="footer-note">
-                <LockKeyhole size={12} />
-                {auth.user ? t.app.footerPrivate : t.app.footerPublic}
-              </p>
-            </>
-          ) : null}
-        </div>
+                <div className="week-heading">
+                  <h2>
+                    {fmtDate(start)} – {fmtDate(dayPlus(start, 6))}
+                  </h2>
+                  <div className="row">
+                    <button
+                      className="icon-btn"
+                      aria-label={t.planning.previousWeek}
+                      onClick={() => setWeekOffset((v) => v - 1)}
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <button className="ghost-btn small-btn" onClick={() => setWeekOffset(0)}>
+                      {t.planning.today}
+                    </button>
+                    <button
+                      className="icon-btn"
+                      aria-label={t.planning.nextWeek}
+                      onClick={() => setWeekOffset((v) => v + 1)}
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </div>
+                </div>
+                <div className="week-grid">
+                  {week.map((date) => {
+                    const sessions = state.sessions
+                      .filter((s) => s.date === date)
+                      .sort((a, b) => a.time.localeCompare(b.time));
+                    return (
+                      <section className={`day-column ${date === today ? 'is-today' : ''}`} key={date}>
+                        <div className="day-heading">
+                          <span>{t.weekdaysShort[new Date(date + 'T12:00:00').getDay()]}</span>
+                          <b>{new Date(date + 'T12:00:00').getDate()}</b>
+                        </div>
+                        {sessions.map((s) => {
+                          const m = state.media.find((m) => m.id === s.mediaId);
+                          return m ? (
+                            <div
+                              className={`plan-item ${m.priority ? 'priority' : ''} ${s.done ? 'done' : ''}`}
+                              key={s.id}
+                            >
+                              <small>
+                                {s.time} · {s.duration} min
+                              </small>
+                              <p>{m.title}</p>
+                              <small>
+                                {m.kind === 'film'
+                                  ? t.kinds.film
+                                  : `${t.units[m.kind]} ${s.from}${s.to > s.from ? `–${s.to}` : ''}`}
+                              </small>
+                              <div className="plan-actions">
+                                <button
+                                  className="icon-btn"
+                                  aria-label={t.media.finish(m.title)}
+                                  disabled={s.done || !canAct}
+                                  onClick={() => finish(s)}
+                                >
+                                  <Check size={15} />
+                                </button>
+                                <button
+                                  className="icon-btn"
+                                  aria-label={t.planning.move(m.title)}
+                                  onClick={() =>
+                                    setSessionDialog({ date: s.date, mediaId: s.mediaId, session: s })
+                                  }
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                                <button
+                                  className="icon-btn"
+                                  aria-label={t.planning.removeSession(m.title)}
+                                  disabled={!canAct}
+                                  onClick={() =>
+                                    commit({
+                                      ...state,
+                                      sessions: state.sessions.filter((x) => x.id !== s.id),
+                                    })
+                                  }
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ) : null;
+                        })}
+                        {!sessions.length && (
+                          <p className="day-empty">
+                            {state.settings.days.includes(new Date(date + 'T12:00:00').getDay())
+                              ? t.planning.freeEvening
+                              : t.planning.dayOff}
+                          </p>
+                        )}
+                        <button
+                          className="plan-add"
+                          onClick={() => (state.media.length ? setSessionDialog({ date }) : add())}
+                        >
+                          <Plus size={13} />
+                          {t.planning.addSession}
+                        </button>
+                        {sessions.length > 0 && (
+                          <p className="day-total">
+                            {sessions.reduce((n, s) => n + s.duration, 0)} / {state.settings.budget} min
+                          </p>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+                <p className="form-hint mt-24">{t.planning.hint(state.settings.timezone)}</p>
+              </>
+            )}
+            {view === 'assistant' && (
+              <Assistant
+                key={auth.user?.id}
+                expectedUserId={auth.user?.id || ''}
+                aiReady={aiReady}
+                state={state}
+                onPlanning={() => navigate('planning')}
+              />
+            )}
+            {view === 'planning' && (
+              <div className="two-col planning-reminders">
+                <section className="panel">
+                  <div className="section-heading">
+                    <h2>
+                      <Bell size={18} />
+                      {t.reminders.upcoming}
+                    </h2>
+                  </div>
+                  {upcoming.length ? (
+                    upcoming.slice(0, 20).map((s) => (
+                      <div key={s.id}>
+                        <p className="form-hint mt-24">
+                          {fmtDate(s.date, { weekday: 'long', day: 'numeric', month: 'long' })}
+                        </p>
+                        {sessionRow(s)}
+                      </div>
+                    ))
+                  ) : (
+                    <Blank
+                      title={t.reminders.nothingPlanned}
+                      description={t.reminders.nothingPlannedHint}
+                      action={
+                        <button className="secondary" onClick={() => navigate('planning')}>
+                          {t.reminders.openPlanning}
+                        </button>
+                      }
+                    />
+                  )}
+                </section>
+                <section className="panel">
+                  <div className="section-heading">
+                    <h2>{t.reminders.myNotifications}</h2>
+                  </div>
+                  <div className="settings-row">
+                    <div>
+                      <h3>{t.reminders.inApp}</h3>
+                      <p>{t.reminders.inAppHint}</p>
+                    </div>
+                    <Switch
+                      checked={state.settings.reminders}
+                      disabled={!canAct}
+                      aria-label={t.reminders.inAppAria}
+                      onCheckedChange={(v) =>
+                        commit({ ...state, settings: { ...state.settings, reminders: v } })
+                      }
+                    />
+                  </div>
+                  <div className="settings-row">
+                    <div>
+                      <h3>{t.reminders.browser}</h3>
+                      <p>
+                        {permission === 'granted'
+                          ? t.reminders.granted
+                          : permission === 'denied'
+                            ? t.reminders.denied
+                            : t.reminders.ask}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    className="secondary full"
+                    onClick={async () => {
+                      if (!('Notification' in window)) {
+                        toast.info(t.toasts.notificationsUnsupported);
+                        return;
+                      }
+                      try {
+                        const p = await Notification.requestPermission();
+                        setPermission(p);
+                        toast.info(
+                          p === 'granted' ? t.toasts.notificationsAllowed : t.toasts.inAppStillAvailable,
+                        );
+                      } catch {
+                        toast.info(t.toasts.useInApp);
+                      }
+                    }}
+                    disabled={permission === 'granted' || permission === 'denied'}
+                  >
+                    <Bell size={16} />
+                    {permission === 'granted' ? t.reminders.allowedButton : t.reminders.allowButton}
+                  </button>
+                  <p className="notice">{t.reminders.keepOpen}</p>
+                  <p className="subdued">
+                    {t.reminders.usualTime} <span className="accent-text">{state.settings.time}</span>
+                    <br />
+                    {state.settings.timezone}
+                  </p>
+                </section>
+              </div>
+            )}
+            <p className="footer-note">
+              <LockKeyhole size={12} />
+              {auth.user ? t.app.footerPrivate : t.app.footerPublic}
+            </p>
+          </>
+        ) : null}
       </main>
+      <BottomNav view={view} onNavigate={navigate} />
       {catalogDetail && (
         <CatalogDetail
           item={catalogDetail}
@@ -1401,7 +1201,7 @@ export default function WatchApp() {
                   (await commit({ ...state, sessions: [...state.sessions, ...planPreview] }))
                 ) {
                   setPlanPreview(null);
-                  setView('planning');
+                  navigate('planning');
                   toast.success(t.toasts.scheduleAdded);
                 }
               }}
@@ -1411,7 +1211,7 @@ export default function WatchApp() {
           </div>
         </DialogContent>
       </Dialog>
-    </SidebarProvider>
+    </div>
   );
 }
 function MediaEditor({

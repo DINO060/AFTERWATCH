@@ -32,7 +32,11 @@ const categories = [
   { key: 'series', icon: LibraryBig },
 ] as const;
 import { loadCatalog, loadDetail as loadCatalogDetail, catalogErrorText } from '@/lib/catalog-client';
+import { feedsFor, type Feed } from '@/lib/catalog-gateway';
 export { loadDetail as loadCatalogDetail } from '@/lib/catalog-client';
+
+export const feedLabel = (t: Messages, kind: Kind, feed: Feed) =>
+  feed === 'new' && kind === 'anime' ? t.feeds.newAnime : t.feeds[feed];
 
 /** Source values (English or French) shown in the interface language when known. */
 const translated = (map: Record<string, string>, value: string) => map[value] || value;
@@ -270,17 +274,28 @@ export default function CatalogBrowser({
   onAdd,
   onDetail,
   onManual,
+  tmdb,
+  initialKind = 'anime',
+  initialFeed = 'popular',
+  initialQuery = '',
 }: {
   collection: Media[];
   saving: boolean;
   onAdd: (item: CatalogItem, priority: boolean) => Promise<boolean>;
   onDetail: (item: CatalogItem) => void;
   onManual: () => void;
+  tmdb: boolean;
+  initialKind?: Kind;
+  initialFeed?: Feed;
+  initialQuery?: string;
 }) {
   const { t, locale } = useI18n();
-  const [kind, setKind] = useState<Kind>('anime');
-  const [query, setQuery] = useState('');
-  const [search, setSearch] = useState('');
+  const [kind, setKind] = useState<Kind>(initialKind);
+  const [feed, setFeed] = useState<Feed>(
+    feedsFor(initialKind, tmdb).includes(initialFeed) ? initialFeed : 'popular',
+  );
+  const [query, setQuery] = useState(initialQuery);
+  const [search, setSearch] = useState(initialQuery);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<CatalogPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -290,7 +305,7 @@ export default function CatalogBrowser({
   const cache = useRef(new Map<string, CatalogPage>());
   useEffect(() => {
     const c = new AbortController();
-    const params = new URLSearchParams({ kind, page: String(page), q: search });
+    const params = new URLSearchParams({ kind, page: String(page), q: search, feed });
     const key = params.toString();
     const saved = cache.current.get(key);
     setError(null);
@@ -301,7 +316,7 @@ export default function CatalogBrowser({
     }
     setLoading(true);
     setData(null);
-    loadCatalog(kind, search, page, c.signal)
+    loadCatalog(kind, search, page, c.signal, feed)
       .then((result) => {
         if (c.signal.aborted) return;
         setData(result);
@@ -315,9 +330,18 @@ export default function CatalogBrowser({
         if (!c.signal.aborted) setLoading(false);
       });
     return () => c.abort();
-  }, [kind, search, page, retry]);
+  }, [kind, feed, search, page, retry]);
+  const feeds = feedsFor(kind, tmdb);
   const changeKind = (v: string) => {
     setKind(v as Kind);
+    if (!feedsFor(v as Kind, tmdb).includes(feed)) setFeed('popular');
+    setPage(1);
+    setRetry(0);
+  };
+  const changeFeed = (next: Feed) => {
+    setFeed(next);
+    setSearch('');
+    setQuery('');
     setPage(1);
     setRetry(0);
   };
@@ -363,16 +387,23 @@ export default function CatalogBrowser({
           {t.catalog.search}
         </button>
       </form>
+      <div className="feed-chips" role="tablist" aria-label={t.catalog.categoriesAria}>
+        {feeds.map((f) => (
+          <button
+            key={f}
+            role="tab"
+            aria-selected={!search && feed === f}
+            className={!search && feed === f ? 'on' : ''}
+            onClick={() => changeFeed(f)}
+          >
+            {feedLabel(t, kind, f)}
+          </button>
+        ))}
+      </div>
       <div className="catalog-section-heading">
         <div>
           <h2>
-            {search
-              ? t.catalog.resultsFor(search)
-              : kind === 'series'
-                ? t.catalog.headingSeries
-                : kind === 'film'
-                  ? t.catalog.headingFilm
-                  : t.catalog.headingDefault}
+            {search ? t.catalog.resultsFor(search) : `${t.kindsPlural[kind]} · ${feedLabel(t, kind, feed)}`}
           </h2>
           <p>{search ? t.catalog.pickCover : t.catalog.explore}</p>
         </div>
@@ -541,6 +572,7 @@ export default function CatalogBrowser({
           </a>
           . {t.catalog.sourcesNote}
         </p>
+        {tmdb && <p className="form-hint">{t.catalog.tmdbCredit}</p>}
         <button className="ghost-btn small-btn" onClick={onManual}>
           {t.catalog.notFoundManual}
         </button>
