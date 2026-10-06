@@ -841,3 +841,21 @@ h1 {
     justify-content: flex-start;
   }
 }
+
+/* Swipeable strips keep scrolling but show no scrollbar line (Android draws one under the pills). */
+.kind-pills,
+.catalog-tabs [data-slot='tabs-list'] {
+  scrollbar-width: none;
+}
+.kind-pills::-webkit-scrollbar,
+.catalog-tabs [data-slot='tabs-list']::-webkit-scrollbar {
+  display: none;
+}
+@media (pointer: coarse) {
+  .feed-row-track {
+    scrollbar-width: none;
+  }
+  .feed-row-track::-webkit-scrollbar {
+    display: none;
+  }
+}
