@@ -4,6 +4,18 @@ import { safeReturnPath } from '../lib/auth-redirect.ts';
 import { assertSameOrigin } from '../lib/auth-origin.ts';
 import { assertExpectedUser } from '../lib/auth-owner.ts';
 import { getSupabaseConfig, getTelegramProvider } from '../lib/supabase/config.ts';
+import { cleanDisplayName } from '../lib/display-name.ts';
+
+test('display names are trimmed, single-spaced, capped and free of invisible characters', () => {
+  const zeroWidth = String.fromCharCode(0x200b);
+  const rtlOverride = String.fromCharCode(0x202e);
+  assert.equal(cleanDisplayName('  John   Diverson  '), 'John Diverson');
+  assert.equal(cleanDisplayName(`Jo${zeroWidth}hn${rtlOverride}`), 'John');
+  assert.equal(cleanDisplayName('a\nb\tc'), 'a b c');
+  assert.equal(cleanDisplayName('x'.repeat(60)).length, 40);
+  assert.equal(cleanDisplayName('🎬'.repeat(45)), '🎬'.repeat(40), 'emoji count as one character');
+  for (const value of [undefined, null, 42, {}, '   ', zeroWidth]) assert.equal(cleanDisplayName(value), '');
+});
 
 test('auth redirects preserve an application path, query and fragment', () => {
   assert.equal(safeReturnPath('/?view=collection#saved'), '/?view=collection#saved');

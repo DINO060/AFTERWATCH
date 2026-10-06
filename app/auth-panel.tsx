@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Provider } from '@supabase/supabase-js';
-import { Link2, LoaderCircle, LogOut, Mail, Send } from 'lucide-react';
+import { Check, Link2, LoaderCircle, LogOut, Mail, Send } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+import { saveDisplayName, signOut as endSession } from '@/lib/auth-actions';
+import { DISPLAY_NAME_MAX } from '@/lib/display-name';
 import { getTelegramProvider } from '@/lib/supabase/config';
 import type { Messages } from '@/lib/i18n';
 import { useI18n } from './i18n-provider';
@@ -24,7 +26,7 @@ export type AuthStatus = {
   telegramEnabled: boolean;
   googleEnabled: boolean;
 };
-export type AuthPanelProps = AuthStatus & { onAuthChange?: () => void };
+export type AuthPanelProps = AuthStatus & { onAuthChange?: () => void; onProfileChange?: () => void };
 
 function GoogleIcon() {
   return (
@@ -55,10 +57,12 @@ export function AuthPanel({
   telegramEnabled,
   googleEnabled,
   onAuthChange,
+  onProfileChange,
 }: AuthPanelProps) {
   const { t } = useI18n();
   const [email, setEmail] = useState('');
-  const [busy, setBusy] = useState<'email' | 'telegram' | 'google' | 'signout' | null>(null);
+  const [name, setName] = useState(user?.displayName || '');
+  const [busy, setBusy] = useState<'email' | 'telegram' | 'google' | 'signout' | 'name' | null>(null);
   const [message, setMessage] = useState<AuthText | ''>('');
   const [error, setError] = useState<AuthText | ''>('');
   const knownUserId = useRef(user?.id || null);
@@ -173,16 +177,30 @@ export function AuthPanel({
     }
   }
 
+  async function saveName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    setError('');
+    setMessage('');
+    setBusy('name');
+    try {
+      setName(await saveDisplayName(name));
+      setMessage('nameSaved');
+      onProfileChange?.();
+    } catch (cause) {
+      setError(cause instanceof RangeError ? 'nameInvalid' : 'nameFailed');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function signOut() {
     if (busy) return;
     setBusy('signout');
     setError('');
     try {
-      const response = await fetch('/api/auth/signout', { method: 'POST' });
-      if (!response.ok) throw new Error('Signout failed');
+      await endSession();
       knownUserId.current = null;
-      // Discard the browser client's cached session after server cookies clear.
-      await createSupabaseBrowserClient()?.auth.signOut({ scope: 'local' });
       if (onAuthChange) onAuthChange();
       else window.location.reload();
     } catch {
@@ -208,6 +226,34 @@ export function AuthPanel({
             {user.email && <> · {user.email}</>}
             {t.auth.accountNote}
           </p>
+          <form className="name-form mt-24" onSubmit={saveName}>
+            <label className="field">
+              <span>{t.auth.nameLabel}</span>
+              <span className="name-row">
+                <input
+                  value={name}
+                  maxLength={DISPLAY_NAME_MAX}
+                  autoComplete="nickname"
+                  required
+                  onChange={(event) => setName(event.target.value)}
+                  disabled={Boolean(busy)}
+                />
+                <button
+                  className="primary"
+                  type="submit"
+                  disabled={Boolean(busy) || name.trim() === user.displayName}
+                >
+                  {busy === 'name' ? (
+                    <LoaderCircle className="loading-icon" size={16} />
+                  ) : (
+                    <Check size={16} />
+                  )}
+                  {t.common.save}
+                </button>
+              </span>
+            </label>
+            <p className="form-hint">{t.auth.nameHint}</p>
+          </form>
           {user.telegramLinked && (
             <p className="inline-note">
               <Link2 size={16} />

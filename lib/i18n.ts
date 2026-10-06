@@ -529,6 +529,13 @@ const fr = {
     continueTelegram: 'Continuer avec Telegram',
     telegramHint:
       'Tu as déjà un compte par e-mail ? Connecte-toi d’abord, puis lie Telegram pour conserver ta collection.',
+    nameLabel: 'Nom affiché',
+    nameHint: 'Visible sur ton profil. 40 caractères maximum.',
+    nameSaved: 'Nom enregistré.',
+    nameInvalid: 'Choisis un nom de 1 à 40 caractères.',
+    nameFailed: 'Impossible d’enregistrer ton nom. Réessaie.',
+    language: 'Langue',
+    connectedWith: 'Connecté avec',
   },
   install: {
     installed: 'Installée',
@@ -1056,6 +1063,13 @@ const en: Messages = {
     sendLink: 'Email me a sign-in link',
     continueTelegram: 'Continue with Telegram',
     telegramHint: 'Already have an email account? Sign in first, then link Telegram to keep your collection.',
+    nameLabel: 'Display name',
+    nameHint: 'Shown on your profile. 40 characters max.',
+    nameSaved: 'Name saved.',
+    nameInvalid: 'Choose a name between 1 and 40 characters.',
+    nameFailed: 'Couldn’t save your name. Try again.',
+    language: 'Language',
+    connectedWith: 'Signed in with',
   },
   install: {
     installed: 'Installed',

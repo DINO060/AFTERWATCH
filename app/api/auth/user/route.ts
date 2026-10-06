@@ -1,5 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import { getEnabledProviders } from '@/lib/auth-providers';
+import { cleanDisplayName } from '@/lib/display-name';
 import { langFromRequest, messages } from '@/lib/i18n';
 import { getSupabaseConfig, getTelegramProvider } from '@/lib/supabase/config';
 
@@ -21,19 +22,22 @@ export async function GET(request: Request) {
   try {
     const [{ user }, { google: googleEnabled }] = await Promise.all([requireUser(lang), providers]);
     const metadata = user.user_metadata;
+    // display_name is the one the member chose in Afterwatch; provider names (Google…) come after.
     const name = [
+      metadata.display_name,
       metadata.full_name,
       metadata.name,
-      metadata.display_name,
       metadata.preferred_username,
       metadata.username,
-    ].find((value) => typeof value === 'string' && value.trim());
+    ]
+      .map(cleanDisplayName)
+      .find(Boolean);
     return Response.json(
       {
         user: {
           id: user.id,
           email: user.email || null,
-          displayName: typeof name === 'string' ? name : user.email?.split('@')[0] || t.memberFallback,
+          displayName: name || cleanDisplayName(user.email?.split('@')[0]) || t.memberFallback,
           telegramLinked: Boolean(
             telegramProvider && user.identities?.some((identity) => identity.provider === telegramProvider),
           ),
