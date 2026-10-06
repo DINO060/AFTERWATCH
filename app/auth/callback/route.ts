@@ -9,7 +9,9 @@ export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient();
   const code = url.searchParams.get('code');
   const tokenHash = url.searchParams.get('token_hash');
-  const returnPath = safeReturnPath(url.searchParams.get('next'));
+  const type = url.searchParams.get('type');
+  // A password-reset link always lands on the "new password" form.
+  const returnPath = type === 'recovery' ? '/?auth=recovery' : safeReturnPath(url.searchParams.get('next'));
   let verified = false;
   // Supabase redirects here with error_code when the link itself was rejected (e.g. already used).
   let failure = url.searchParams.get('error_code') || (code || tokenHash ? 'unknown' : 'missing_code');
@@ -20,9 +22,9 @@ export async function GET(request: Request) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         verified = !error;
         if (error) failure = error.code || String(error.status || 'unknown');
-      } else if (tokenHash && url.searchParams.get('type') === 'email') {
-        // Supports the recommended token-hash Magic Link email template too.
-        const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
+      } else if (tokenHash && (type === 'email' || type === 'recovery')) {
+        // Token-hash e-mail templates: sign-in link, sign-up confirmation (email) and password reset (recovery).
+        const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
         verified = !error;
         if (error) failure = error.code || String(error.status || 'unknown');
       }

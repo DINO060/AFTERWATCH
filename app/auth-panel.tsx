@@ -1,17 +1,40 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Provider } from '@supabase/supabase-js';
-import { Check, Link2, LoaderCircle, LogOut, Mail, Send } from 'lucide-react';
+import {
+  Check,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Link2,
+  LoaderCircle,
+  LogOut,
+  Mail,
+  Send,
+  UserPlus,
+} from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
-import { saveDisplayName, signOut as endSession } from '@/lib/auth-actions';
-import { DISPLAY_NAME_MAX } from '@/lib/display-name';
 import { getTelegramProvider } from '@/lib/supabase/config';
+import {
+  authErrorKey,
+  logInWithPassword,
+  saveDisplayName,
+  sendPasswordReset,
+  setPassword as savePassword,
+  signOut as endSession,
+  signUpWithPassword,
+} from '@/lib/auth-actions';
+import { DISPLAY_NAME_MAX } from '@/lib/display-name';
+import { PASSWORD_MIN, passwordProblem } from '@/lib/password';
 import type { Messages } from '@/lib/i18n';
 import { useI18n } from './i18n-provider';
 
 // Messages are kept as keys so they follow a language switch while on screen.
 type AuthText = keyof Messages['auth'];
+export type AuthMode = 'login' | 'signup';
+type Screen = AuthMode | 'forgot' | 'magic';
+type Busy = 'login' | 'signup' | 'reset' | 'magic' | 'telegram' | 'google' | 'signout' | 'name' | 'password';
 
 export type AccountUser = {
   id: string;
@@ -26,7 +49,13 @@ export type AuthStatus = {
   telegramEnabled: boolean;
   googleEnabled: boolean;
 };
-export type AuthPanelProps = AuthStatus & { onAuthChange?: () => void; onProfileChange?: () => void };
+export type AuthPanelProps = AuthStatus & {
+  onAuthChange?: () => void;
+  onProfileChange?: () => void;
+  initialMode?: AuthMode;
+  /** Opened from a password-reset link: ask for the new password first. */
+  recovery?: boolean;
+};
 
 function GoogleIcon() {
   return (
@@ -51,6 +80,60 @@ function GoogleIcon() {
   );
 }
 
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  disabled,
+  hint,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: 'current-password' | 'new-password';
+  disabled: boolean;
+  hint?: string;
+}) {
+  const { t } = useI18n();
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <span className="password-row">
+        <input
+          id={id}
+          type={shown ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete={autoComplete}
+          required
+          minLength={autoComplete === 'new-password' ? PASSWORD_MIN : undefined}
+          maxLength={128}
+          disabled={disabled}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+        />
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label={shown ? t.auth.hidePassword : t.auth.showPassword}
+          aria-pressed={shown}
+          onClick={() => setShown((s) => !s)}
+        >
+          {shown ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </span>
+      {hint && (
+        <span id={`${id}-hint`} className="form-hint">
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function AuthPanel({
   user,
   configured,
@@ -58,11 +141,17 @@ export function AuthPanel({
   googleEnabled,
   onAuthChange,
   onProfileChange,
+  initialMode = 'login',
+  recovery = false,
 }: AuthPanelProps) {
   const { t } = useI18n();
+  const [screen, setScreen] = useState<Screen>(initialMode);
   const [email, setEmail] = useState('');
+  const [password, setPasswordValue] = useState('');
+  const [signupName, setSignupName] = useState('');
   const [name, setName] = useState(user?.displayName || '');
-  const [busy, setBusy] = useState<'email' | 'telegram' | 'google' | 'signout' | 'name' | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [busy, setBusy] = useState<Busy | null>(null);
   const [message, setMessage] = useState<AuthText | ''>('');
   const [error, setError] = useState<AuthText | ''>('');
   const knownUserId = useRef(user?.id || null);
@@ -101,39 +190,105 @@ export function AuthPanel({
     return () => subscription.unsubscribe();
   }, []);
 
-  async function sendEmail(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const go = (next: Screen) => {
+    setScreen(next);
+    setError('');
+    setMessage('');
+  };
+  /** Runs one action with a busy state; maps Supabase errors to a message or the given fallback. */
+  async function run(kind: Busy, action: () => Promise<void>, fallback: AuthText, success?: AuthText) {
     if (busy) return;
-    const supabase = createSupabaseBrowserClient();
-    if (!supabase) return;
-    setBusy('email');
+    setBusy(kind);
     setError('');
     setMessage('');
     try {
-      const { error: authError } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback`, shouldCreateUser: true },
-      });
-      if (authError) throw authError;
-      setMessage('emailSent');
+      await action();
+      if (success) setMessage(success);
     } catch (cause) {
-      const { code, status } = (cause ?? {}) as { code?: string; status?: number };
-      console.warn('Afterwatch e-mail sign-in failed', code || status || 'unknown');
-      if (status === 429 || code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit') {
-        setError('tooManyRequests');
-      } else if (code === 'email_address_invalid' || code === 'validation_failed') {
-        setError('invalidEmail');
-      } else if (code === 'email_address_not_authorized') {
-        setError('emailNotOpen');
-      } else if (code === 'signup_disabled') {
-        setError('signupDisabled');
-      } else {
-        setError('sendFailed');
+      // A RangeError carries a message key for problems found before calling Supabase.
+      if (cause instanceof RangeError) setError(cause.message as AuthText);
+      else {
+        const key = authErrorKey(cause);
+        if (!key) console.warn('Afterwatch auth failed', (cause as { code?: string })?.code || 'unknown');
+        setError(key || fallback);
       }
     } finally {
       setBusy(null);
     }
   }
+  const checkNewPassword = (value: string) => {
+    const problem = passwordProblem(value);
+    if (problem) throw new RangeError(problem);
+  };
+
+  const logIn = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    run('login', () => logInWithPassword(email, password), 'sendFailed');
+  };
+  const signUp = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    run(
+      'signup',
+      async () => {
+        checkNewPassword(password);
+        await signUpWithPassword(email, password, signupName);
+        setPasswordValue('');
+      },
+      'sendFailed',
+      'signupSent',
+    );
+  };
+  const resetPassword = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    run('reset', () => sendPasswordReset(email), 'sendFailed', 'resetSent');
+  };
+  const sendMagicLink = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    run(
+      'magic',
+      async () => {
+        const supabase = createSupabaseBrowserClient();
+        if (!supabase) throw new Error('Sign-in unavailable');
+        const { error: authError } = await supabase.auth.signInWithOtp({
+          email: email.trim(),
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback`, shouldCreateUser: true },
+        });
+        if (authError?.code === 'email_address_not_authorized') throw new RangeError('emailNotOpen');
+        if (authError) throw authError;
+      },
+      'sendFailed',
+      'emailSent',
+    );
+  };
+  const changePassword = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    run(
+      'password',
+      async () => {
+        checkNewPassword(newPassword);
+        await savePassword(newPassword);
+        setNewPassword('');
+      },
+      'passwordFailed',
+      'passwordSaved',
+    );
+  };
+  const saveName = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    run(
+      'name',
+      async () => {
+        try {
+          setName(await saveDisplayName(name));
+        } catch (cause) {
+          throw cause instanceof RangeError ? new RangeError('nameInvalid') : cause;
+        }
+        onProfileChange?.();
+      },
+      'nameFailed',
+      'nameSaved',
+    );
+  };
 
   async function connectTelegram() {
     if (busy) return;
@@ -177,23 +332,6 @@ export function AuthPanel({
     }
   }
 
-  async function saveName(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy) return;
-    setError('');
-    setMessage('');
-    setBusy('name');
-    try {
-      setName(await saveDisplayName(name));
-      setMessage('nameSaved');
-      onProfileChange?.();
-    } catch (cause) {
-      setError(cause instanceof RangeError ? 'nameInvalid' : 'nameFailed');
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function signOut() {
     if (busy) return;
     setBusy('signout');
@@ -209,18 +347,81 @@ export function AuthPanel({
     }
   }
 
+  const spinner = (kind: Busy, icon: ReactNode) =>
+    busy === kind ? <LoaderCircle className="loading-icon" size={16} /> : icon;
+  const emailField = (
+    <label className="field">
+      <span>{t.auth.emailLabel}</span>
+      <input
+        type="email"
+        autoComplete="email"
+        inputMode="email"
+        autoCapitalize="none"
+        required
+        maxLength={254}
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        placeholder={t.auth.emailPlaceholder}
+        disabled={Boolean(busy)}
+      />
+    </label>
+  );
+  const googleButton = googleEnabled && (
+    <>
+      <button className="secondary full" type="button" disabled={Boolean(busy)} onClick={connectGoogle}>
+        {spinner('google', <GoogleIcon />)}
+        {t.auth.continueGoogle}
+      </button>
+      <p className="auth-divider">
+        <span>{t.auth.or}</span>
+      </p>
+    </>
+  );
+  const passwordForm = (
+    <form className="auth-form mt-24" onSubmit={changePassword}>
+      <PasswordField
+        id="new-password"
+        label={recovery ? t.auth.newPasswordLabel : t.auth.passwordSection}
+        value={newPassword}
+        onChange={setNewPassword}
+        autoComplete="new-password"
+        disabled={Boolean(busy)}
+        hint={recovery ? t.auth.passwordHint : `${t.auth.passwordSectionHint} ${t.auth.passwordHint}`}
+      />
+      <button className="primary" type="submit" disabled={Boolean(busy) || !newPassword}>
+        {spinner('password', <KeyRound size={16} />)}
+        {t.common.save}
+      </button>
+    </form>
+  );
+
   return (
-    <section className="panel" aria-label={t.auth.panelAria}>
-      <div className="section-heading">
-        <h2>
-          <Mail size={19} />
-          {user ? t.auth.myAccount : t.auth.signInTitle}
-        </h2>
-      </div>
+    <section className="panel auth-panel" aria-label={t.auth.panelAria}>
       {!configured ? (
-        <p className="subdued">{t.auth.notConfigured}</p>
+        <>
+          <div className="section-heading">
+            <h2>
+              <Mail size={19} />
+              {t.auth.signInTitle}
+            </h2>
+          </div>
+          <p className="subdued">{t.auth.notConfigured}</p>
+        </>
       ) : user ? (
         <>
+          {recovery && (
+            <div className="recovery-box">
+              <h2>{t.auth.recoveryTitle}</h2>
+              <p className="subdued">{t.auth.recoveryIntro}</p>
+              {passwordForm}
+            </div>
+          )}
+          <div className="section-heading">
+            <h2>
+              <Mail size={19} />
+              {t.auth.myAccount}
+            </h2>
+          </div>
           <p className="subdued">
             {t.auth.signedInAs} <strong>{user.displayName}</strong>
             {user.email && <> · {user.email}</>}
@@ -243,17 +444,14 @@ export function AuthPanel({
                   type="submit"
                   disabled={Boolean(busy) || name.trim() === user.displayName}
                 >
-                  {busy === 'name' ? (
-                    <LoaderCircle className="loading-icon" size={16} />
-                  ) : (
-                    <Check size={16} />
-                  )}
+                  {spinner('name', <Check size={16} />)}
                   {t.common.save}
                 </button>
               </span>
             </label>
             <p className="form-hint">{t.auth.nameHint}</p>
           </form>
+          {!recovery && passwordForm}
           {user.telegramLinked && (
             <p className="inline-note">
               <Link2 size={16} />
@@ -263,74 +461,138 @@ export function AuthPanel({
           <div className="row flex-wrap mt-24">
             {telegramEnabled && !user.telegramLinked && (
               <button className="secondary" type="button" disabled={Boolean(busy)} onClick={connectTelegram}>
-                {busy === 'telegram' ? (
-                  <LoaderCircle className="loading-icon" size={16} />
-                ) : (
-                  <Link2 size={16} />
-                )}
+                {spinner('telegram', <Link2 size={16} />)}
                 {t.auth.linkTelegram}
               </button>
             )}
             <button className="secondary" type="button" disabled={Boolean(busy)} onClick={signOut}>
-              {busy === 'signout' ? (
-                <LoaderCircle className="loading-icon" size={16} />
-              ) : (
-                <LogOut size={16} />
-              )}
+              {spinner('signout', <LogOut size={16} />)}
               {t.auth.signOut}
             </button>
           </div>
         </>
-      ) : (
+      ) : screen === 'forgot' ? (
         <>
-          <p className="subdued">{t.auth.intro}</p>
-          {googleEnabled && (
-            <>
-              <button
-                className="secondary full mt-24"
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={connectGoogle}
-              >
-                {busy === 'google' ? <LoaderCircle className="loading-icon" size={16} /> : <GoogleIcon />}
-                {t.auth.continueGoogle}
-              </button>
-              <p className="form-hint">{t.auth.orEmail}</p>
-            </>
-          )}
-          <form onSubmit={sendEmail}>
-            <label className="field">
-              <span>{t.auth.emailLabel}</span>
-              <input
-                type="email"
-                autoComplete="email"
-                inputMode="email"
-                autoCapitalize="none"
-                required
-                maxLength={254}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder={t.auth.emailPlaceholder}
-                disabled={Boolean(busy)}
-              />
-            </label>
-            <button className="primary mt-24" type="submit" disabled={Boolean(busy)}>
-              {busy === 'email' ? <LoaderCircle className="loading-icon" size={16} /> : <Mail size={16} />}
-              {t.auth.sendLink}
+          <div className="section-heading">
+            <h2>
+              <KeyRound size={19} />
+              {t.auth.forgotTitle}
+            </h2>
+          </div>
+          <p className="subdued">{t.auth.forgotIntro}</p>
+          <form className="auth-form mt-24" onSubmit={resetPassword}>
+            {emailField}
+            <button className="primary" type="submit" disabled={Boolean(busy)}>
+              {spinner('reset', <Mail size={16} />)}
+              {t.auth.sendReset}
             </button>
           </form>
-          {telegramEnabled && (
+          <button className="link-btn mt-24" type="button" onClick={() => go('login')}>
+            {t.auth.backToLogin}
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="auth-tabs" role="tablist" aria-label={t.auth.panelAria}>
             <button
-              className="secondary mt-24"
-              type="button"
-              disabled={Boolean(busy)}
-              onClick={connectTelegram}
+              role="tab"
+              aria-selected={screen !== 'signup'}
+              className={screen !== 'signup' ? 'on' : ''}
+              onClick={() => go('login')}
             >
-              {busy === 'telegram' ? <LoaderCircle className="loading-icon" size={16} /> : <Send size={16} />}
-              {t.auth.continueTelegram}
+              {t.auth.tabLogin}
             </button>
+            <button
+              role="tab"
+              aria-selected={screen === 'signup'}
+              className={screen === 'signup' ? 'on' : ''}
+              onClick={() => go('signup')}
+            >
+              {t.auth.tabSignup}
+            </button>
+          </div>
+          <h2 className="auth-title">{screen === 'signup' ? t.auth.signupTitle : t.auth.signInTitle}</h2>
+          <p className="subdued">{screen === 'signup' ? t.auth.signupIntro : t.auth.intro}</p>
+          <div className="auth-form mt-24">
+            {googleButton}
+            {screen === 'signup' ? (
+              <form className="auth-form" onSubmit={signUp}>
+                <label className="field">
+                  <span>{t.auth.nameOptional}</span>
+                  <input
+                    value={signupName}
+                    maxLength={DISPLAY_NAME_MAX}
+                    autoComplete="nickname"
+                    onChange={(event) => setSignupName(event.target.value)}
+                    disabled={Boolean(busy)}
+                  />
+                </label>
+                {emailField}
+                <PasswordField
+                  id="signup-password"
+                  label={t.auth.passwordLabel}
+                  value={password}
+                  onChange={setPasswordValue}
+                  autoComplete="new-password"
+                  disabled={Boolean(busy)}
+                  hint={t.auth.passwordHint}
+                />
+                <button className="primary" type="submit" disabled={Boolean(busy)}>
+                  {spinner('signup', <UserPlus size={16} />)}
+                  {t.auth.signupButton}
+                </button>
+              </form>
+            ) : screen === 'magic' ? (
+              <form className="auth-form" onSubmit={sendMagicLink}>
+                {emailField}
+                <button className="primary" type="submit" disabled={Boolean(busy)}>
+                  {spinner('magic', <Mail size={16} />)}
+                  {t.auth.sendLink}
+                </button>
+                <button className="link-btn" type="button" onClick={() => go('login')}>
+                  {t.auth.passwordInstead}
+                </button>
+              </form>
+            ) : (
+              <form className="auth-form" onSubmit={logIn}>
+                {emailField}
+                <PasswordField
+                  id="login-password"
+                  label={t.auth.passwordLabel}
+                  value={password}
+                  onChange={setPasswordValue}
+                  autoComplete="current-password"
+                  disabled={Boolean(busy)}
+                />
+                <button className="primary" type="submit" disabled={Boolean(busy)}>
+                  {spinner('login', <KeyRound size={16} />)}
+                  {t.auth.loginButton}
+                </button>
+                <div className="auth-links">
+                  <button className="link-btn" type="button" onClick={() => go('forgot')}>
+                    {t.auth.forgotLink}
+                  </button>
+                  <button className="link-btn" type="button" onClick={() => go('magic')}>
+                    {t.auth.magicLinkInstead}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+          {telegramEnabled && (
+            <>
+              <button
+                className="secondary mt-24"
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={connectTelegram}
+              >
+                {spinner('telegram', <Send size={16} />)}
+                {t.auth.continueTelegram}
+              </button>
+              <p className="form-hint">{t.auth.telegramHint}</p>
+            </>
           )}
-          {telegramEnabled && <p className="form-hint">{t.auth.telegramHint}</p>}
         </>
       )}
       {message && (

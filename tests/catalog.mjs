@@ -232,6 +232,26 @@ try {
   assert.equal(tmdbCalls[0][1].page, '2');
   assert.ok(tmdbCalls[0][1]['first_air_date.gte'] > new Date().toISOString().slice(0, 10));
 
+  // TV lists drop talk shows and news.
+  const tv = await browseWith(async () => assert.fail(), 'series', '', 1, {
+    feed: 'airing',
+    tmdb: async (p) =>
+      p.startsWith('/genre/')
+        ? { genres: [] }
+        : {
+            results: [
+              { id: 1, name: 'Talk', genre_ids: [10767] },
+              { id: 2, name: 'News', genre_ids: [10763] },
+              { id: 3, name: 'Drama', genre_ids: [18] },
+            ],
+            total_pages: 1,
+          },
+  });
+  assert.deepEqual(
+    tv.results.map((x) => x.title),
+    ['Drama'],
+  );
+
   // TMDB down: free sources take over when they can serve the feed, otherwise the error stays.
   const broken = async () => {
     throw Object.assign(Error('down'), { name: 'Error' });

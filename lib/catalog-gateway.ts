@@ -44,6 +44,8 @@ export function currentSeason(date = new Date()) {
 const day = (offset: number, from = new Date()) =>
   new Date(from.getTime() + offset * 86400000).toISOString().slice(0, 10);
 const isAbort = (e: unknown) => e instanceof Error && e.name === 'AbortError';
+/** TMDB TV genres left out of browsing lists: Talk (10767) and News (10763). */
+const TV_NOISE = [10767, 10763];
 
 /** Public metadata only. No account, saved list or API key is sent to these services. */
 export async function browseWith(
@@ -215,7 +217,10 @@ async function browseTmdb(
   );
   const totalPages = Math.min(Number(data.total_pages) || 1, 500);
   return {
-    results: data.results.map((x: any) => normalizeTmdb(x, film ? 'film' : 'series', genreNames)),
+    // Talk shows and news fill TMDB's TV lists without being series people follow; search keeps them.
+    results: data.results
+      .filter((x: any) => film || query || !(x.genre_ids || []).some((g: number) => TV_NOISE.includes(g)))
+      .map((x: any) => normalizeTmdb(x, film ? 'film' : 'series', genreNames)),
     page,
     hasNext: page < totalPages,
     totalResults: typeof data.total_results === 'number' ? data.total_results : null,

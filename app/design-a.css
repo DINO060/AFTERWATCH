@@ -859,3 +859,138 @@ h1 {
     display: none;
   }
 }
+
+/* ---------- Account: log in / sign up ---------- */
+.auth-buttons {
+  display: flex;
+  gap: 8px;
+}
+.auth-buttons button {
+  height: 44px;
+}
+.auth-panel {
+  max-width: 560px;
+}
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--background);
+  border: 1px solid var(--input);
+  margin-bottom: 20px;
+}
+.auth-tabs button {
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+.auth-tabs button.on {
+  background: var(--foreground);
+  color: var(--background);
+}
+.auth-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.auth-form .primary {
+  height: 48px;
+}
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--input);
+}
+.password-row {
+  position: relative;
+  display: block;
+}
+.password-row input {
+  padding-right: 52px;
+}
+.password-row .icon-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 44px;
+  min-height: 40px;
+}
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.link-btn {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  color: #ff9283;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.link-btn:hover {
+  color: var(--primary);
+}
+.recovery-box {
+  border: 1px solid rgba(255, 106, 85, 0.45);
+  background: rgba(255, 106, 85, 0.08);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 24px;
+}
+.recovery-box h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+@media (max-width: 900px) {
+  /* Phones: one "Log in" button in the header; the page has a Sign up tab. */
+  .auth-buttons .sign-in-btn {
+    display: none;
+  }
+  .auth-buttons .login-btn {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: transparent;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+}
+
+/* Crowded header (signed out: log in + sign up): the search box gives way first. */
+.header-search {
+  flex: 0 1 280px;
+  width: auto;
+  min-width: 150px;
+}
+.lang-toggle,
+.auth-buttons,
+.account-trigger,
+.pill-btn,
+.brand-link,
+.header-nav {
+  flex-shrink: 0;
+}

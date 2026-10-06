@@ -122,3 +122,12 @@ test('missing or malformed Supabase configuration disables authentication', () =
     }
   }
 });
+
+test('new passwords need 8 characters and stay within the 72-byte limit', async () => {
+  const { passwordProblem } = await import('../lib/password.ts');
+  assert.equal(passwordProblem('1234567'), 'passwordTooShort');
+  assert.equal(passwordProblem('12345678'), null);
+  assert.equal(passwordProblem('🎬🎬🎬🎬🎬🎬🎬'), 'passwordTooShort', 'emoji count as one character each');
+  assert.equal(passwordProblem('é'.repeat(37)), 'weakPassword', '74 bytes is over the bcrypt limit');
+  assert.equal(passwordProblem('a'.repeat(72)), null);
+});

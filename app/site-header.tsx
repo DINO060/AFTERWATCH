@@ -17,7 +17,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { saveDisplayName, signOut } from '@/lib/auth-actions';
 import { DISPLAY_NAME_MAX } from '@/lib/display-name';
-import type { AccountUser } from './auth-panel';
+import type { AccountUser, AuthMode } from './auth-panel';
 import InstallApp from './install-app';
 import { useI18n } from './i18n-provider';
 
@@ -44,6 +44,7 @@ export function SiteHeader({
   onSearch,
   onProfileChange,
   onSignedOut,
+  onAuth,
 }: {
   view: View;
   onNavigate: (view: View) => void;
@@ -53,6 +54,7 @@ export function SiteHeader({
   onSearch: (query: string) => void;
   onProfileChange: () => void;
   onSignedOut: () => void;
+  onAuth: (mode: AuthMode) => void;
 }) {
   const { t, lang, setLang } = useI18n();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -149,9 +151,14 @@ export function SiteHeader({
             onSignedOut={onSignedOut}
           />
         ) : authChecked ? (
-          <button className="primary sign-in-btn" onClick={() => onNavigate('account')}>
-            {t.nav.signIn}
-          </button>
+          <div className="auth-buttons">
+            <button className="secondary login-btn" onClick={() => onAuth('login')}>
+              {t.auth.tabLogin}
+            </button>
+            <button className="primary sign-in-btn" onClick={() => onAuth('signup')}>
+              {t.auth.headerSignup}
+            </button>
+          </div>
         ) : (
           <span className="account-placeholder" aria-hidden="true" />
         )}

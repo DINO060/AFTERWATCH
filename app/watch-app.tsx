@@ -69,7 +69,7 @@ import {
 import InstallApp from './install-app';
 import CatalogBrowser, { CatalogDetail } from './catalog-browser';
 import { type CatalogItem, mediaFromCatalog, sameTitle, itemFromMedia } from '@/lib/catalog';
-import AuthPanel, { type AuthStatus } from './auth-panel';
+import AuthPanel, { type AuthMode, type AuthStatus } from './auth-panel';
 import { SiteHeader, BottomNav, type View } from './site-header';
 import HomeView from './home-view';
 import type { Feed } from '@/lib/catalog-gateway';
@@ -182,6 +182,12 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
   const savingRef = useRef(false);
   const [aiReady, setAiReady] = useState(false);
   const [view, setView] = useState<View>('home');
+  // Which tab the account page opens on; the nonce remounts it when a header button is pressed again.
+  const [authScreen, setAuthScreen] = useState<{ mode: AuthMode; nonce: number }>({
+    mode: 'login',
+    nonce: 0,
+  });
+  const [recovery, setRecovery] = useState(false);
   const [catalogTarget, setCatalogTarget] = useState<{
     kind: Kind;
     feed: Feed;
@@ -269,7 +275,16 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
     }
   }, []);
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('auth_error')) setView('account');
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('auth_error')) setView('account');
+    // Back from a password-reset link: signed in, ask for the new password.
+    if (params.get('auth') === 'recovery') {
+      setRecovery(true);
+      setView('account');
+      params.delete('auth');
+      const query = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    }
     load();
   }, [load]);
   // supabase-js emits SIGNED_IN when it restores a stored session, before /api/auth/user answers.
@@ -627,6 +642,10 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
         onSearch={(query) => openCatalog(catalogTarget.kind, 'popular', query)}
         onProfileChange={refreshAccount}
         onSignedOut={() => window.location.reload()}
+        onAuth={(mode) => {
+          setAuthScreen({ mode, nonce: Date.now() });
+          navigate('account');
+        }}
       />
       <main className="workspace">
         {error && (
@@ -706,7 +725,13 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
             {view === 'account' &&
               (authChecked ? (
                 <>
-                  <AuthPanel {...auth} onProfileChange={refreshAccount} />
+                  <AuthPanel
+                    key={authScreen.nonce}
+                    {...auth}
+                    initialMode={authScreen.mode}
+                    recovery={recovery}
+                    onProfileChange={refreshAccount}
+                  />
                   <div className="install-row">
                     <InstallApp />
                   </div>
