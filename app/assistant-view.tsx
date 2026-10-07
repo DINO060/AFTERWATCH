@@ -334,10 +334,19 @@ function StatusCards({ cards }: { cards: StatusCard[] }) {
   const { t } = useI18n();
   const when = useWhen();
   const words = t.assistant.releaseStatus as Record<string, string>;
+  // A long list scrolls inside the card instead of stretching the conversation.
+  const long = cards.length > 4;
   return (
     <section className="ai-card" aria-label={t.assistant.whereYouAre}>
-      <h3>{t.assistant.whereYouAre}</h3>
-      <ul className="ai-status-list">
+      <div className="ai-card-head">
+        <h3>{t.assistant.whereYouAre}</h3>
+        {long && <span>{t.assistant.titleCount(cards.length)}</span>}
+      </div>
+      <ul
+        className={`ai-status-list${long ? ' ai-scroll' : ''}`}
+        tabIndex={long ? 0 : undefined}
+        aria-label={long ? t.assistant.whereYouAre : undefined}
+      >
         {cards.map((c) => {
           const unit = t.units[c.kind];
           const base = c.total ?? c.released;
@@ -448,27 +457,32 @@ function Proposal({
       </div>
       {shownDays.length > 0 && (
         <div className="ai-week">
-          {shownDays.map((date) => (
-            <div className="ai-day" key={date}>
-              <span className="ai-day-label">
-                {`${new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short' })} ${Number(date.slice(8))}`}
-              </span>
-              <div className="ai-day-chips">
-                {sessions
-                  .filter((s) => s.date === date)
-                  .map((s) => {
-                    const m = known.get(s.mediaId)!;
-                    return (
-                      <span className="ai-chip" key={s.id} title={m.title}>
-                        <Poster src={m.poster} title={m.title} className="ai-chip-poster" />
-                        <span className="sr-only">{m.title}</span>
-                        {s.time} · {m.kind === 'film' ? t.units.film : range(s.from, s.to)}
-                      </span>
-                    );
-                  })}
+          <div
+            className={`ai-week-days${allDays && days.length > 7 ? ' ai-scroll' : ''}`}
+            tabIndex={allDays && days.length > 7 ? 0 : undefined}
+          >
+            {shownDays.map((date) => (
+              <div className="ai-day" key={date}>
+                <span className="ai-day-label">
+                  {`${new Date(date + 'T12:00:00').toLocaleDateString(locale, { weekday: 'short' })} ${Number(date.slice(8))}`}
+                </span>
+                <div className="ai-day-chips">
+                  {sessions
+                    .filter((s) => s.date === date)
+                    .map((s) => {
+                      const m = known.get(s.mediaId)!;
+                      return (
+                        <span className="ai-chip" key={s.id} title={m.title}>
+                          <Poster src={m.poster} title={m.title} className="ai-chip-poster" />
+                          <span className="sr-only">{m.title}</span>
+                          {s.time} · {m.kind === 'film' ? t.units.film : range(s.from, s.to)}
+                        </span>
+                      );
+                    })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
           {days.length > DAYS_SHOWN && (
             <button className="ai-link" onClick={() => setAllDays(!allDays)}>
               {allDays ? t.assistant.fewerDays : t.assistant.allDays(days.length)}

@@ -1270,10 +1270,31 @@ h1 {
 .ai-proposal.dismissed .ai-changes {
   opacity: 0.5;
 }
-.ai-week {
+.ai-week,
+.ai-week-days {
   display: flex;
   flex-direction: column;
   gap: 7px;
+}
+/* Long lists scroll inside their card (about four titles or eight days visible). */
+.ai-scroll {
+  max-height: 330px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #3a3f4c transparent;
+}
+.ai-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.ai-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #3a3f4c;
+}
+.ai-scroll:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .ai-day {
   display: grid;
