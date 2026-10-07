@@ -38,7 +38,7 @@ export type RunSummary = {
   failed: number;
   skipped?: string;
   /** Which settings the server can see (never their values); only shown to the scheduled caller. */
-  config?: { supabaseSecret: boolean; email: boolean; push: boolean; tmdb: boolean };
+  config?: { supabaseSecret: boolean; keyKind: string; email: boolean; push: boolean; tmdb: boolean };
 };
 
 const anyOn =
@@ -56,6 +56,22 @@ async function pool<T>(items: T[], limit: number, task: (item: T) => Promise<voi
   );
 }
 
+/** The kind of Supabase key configured (a public key here would be a mistake), never its value. */
+function keyKind(key: string): string {
+  if (!key) return 'none';
+  if (key.startsWith('sb_secret_')) return 'secret';
+  if (key.startsWith('sb_publishable_')) return 'publishable (wrong key)';
+  if (key.startsWith('eyJ')) {
+    try {
+      const role = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString()).role;
+      return role === 'service_role' ? 'legacy service_role' : `legacy ${role} (wrong key)`;
+    } catch {
+      return 'unreadable';
+    }
+  }
+  return 'unknown';
+}
+
 export async function runNotifications(site: string, now = Date.now()): Promise<RunSummary> {
   const summary: RunSummary = {
     since: '',
@@ -66,6 +82,7 @@ export async function runNotifications(site: string, now = Date.now()): Promise<
     failed: 0,
     config: {
       supabaseSecret: Boolean(process.env.SUPABASE_SECRET_KEY?.trim()),
+      keyKind: keyKind(process.env.SUPABASE_SECRET_KEY?.trim() || ''),
       email: emailReady(),
       push: pushReady(),
       tmdb: Boolean(tmdbFetcher('en')),
