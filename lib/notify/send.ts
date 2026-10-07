@@ -4,7 +4,7 @@ import type { Note } from './messages';
 
 export const emailReady = () => Boolean(process.env.RESEND_API_KEY?.trim());
 export const pushReady = () =>
-  Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim());
+  Boolean(process.env.VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim());
 const sender = () => process.env.NOTIFY_FROM?.trim() || 'Afterwatch <notifications@afterwatch.online>';
 
 export async function sendEmail(to: string, note: Note, unsubscribeUrl: string): Promise<void> {
@@ -40,7 +40,7 @@ export async function sendPush(
   if (!vapidReady) {
     webpush.setVapidDetails(
       'mailto:notifications@afterwatch.online',
-      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!.trim(),
+      process.env.VAPID_PUBLIC_KEY!.trim(),
       process.env.VAPID_PRIVATE_KEY!.trim(),
     );
     vapidReady = true;

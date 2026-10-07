@@ -39,7 +39,7 @@ export async function GET(request: Request) {
         prefs: { ...defaults, ...((data as Partial<typeof defaults> | null) || {}) },
         emailAvailable: emailReady(),
         pushAvailable: pushReady(),
-        vapidPublicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() || null,
+        vapidPublicKey: process.env.VAPID_PUBLIC_KEY?.trim() || null,
       },
       { headers },
     );

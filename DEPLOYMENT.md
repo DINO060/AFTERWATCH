@@ -160,7 +160,7 @@ via TMDB/TVmaze) et résumé du lundi 9 h. Chaque membre les active dans « Mon 
 1. **SQL** : exécuter `supabase/migrations/202610060001_notifications.sql` une fois.
 2. **Vercel → Environment Variables** (Production et Preview) : `SUPABASE_SECRET_KEY`
    (Supabase → Project Settings → API Keys → Secret key), `RESEND_API_KEY` (Resend → API
-   Keys, accès « Sending » au domaine), `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
+   Keys, accès « Sending » au domaine), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
    et `CRON_SECRET` (générés dans `.env.local`). Redéployer ensuite.
 3. **Planification Supabase** (SQL Editor), en remplaçant `COLLER_LE_CRON_SECRET` par la
    valeur de `CRON_SECRET` — ce secret ne doit jamais être commité :
