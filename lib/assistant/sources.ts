@@ -81,15 +81,19 @@ async function malId(target: Target): Promise<number | null> {
   return null;
 }
 
-async function animeStatus(target: Target): Promise<TitleStatus> {
+async function animeStatus(target: Target, lang: Lang): Promise<TitleStatus> {
   let mal: number | null = null;
   try {
     mal = await malId(target);
   } catch {
     // Kitsu unavailable: fall back to a title search.
   }
-  if (!mal && !target.title.trim()) return unknown(target.title);
-  const media = await anilist(mal ? { idMal: mal } : { search: target.title.slice(0, 100) });
+  // New titles often have no MyAnimeList link on Kitsu yet: search AniList by the catalog title.
+  let title = target.title.trim();
+  if (!mal && !title && target.catalog)
+    title = (await catalogDetail('anime', target.catalog.source, target.catalog.id, lang)).title;
+  if (!mal && !title) return unknown(target.title);
+  const media = await anilist(mal ? { idMal: mal } : { search: title.slice(0, 100) });
   if (!media) return unknown(target.title);
   const total: number | null = Number.isInteger(media.episodes) ? media.episodes : null;
   const upcoming: Release[] = (media.airingSchedule?.nodes || [])
@@ -116,7 +120,7 @@ async function animeStatus(target: Target): Promise<TitleStatus> {
   if (!finale && media.status === 'FINISHED' && ended && total)
     finale = { episode: total, at: Date.parse(`${ended}T12:00:00Z`) || 0, dateOnly: true, estimated: false };
   return {
-    title: media.title?.english || media.title?.romaji || target.title,
+    title: media.title?.english || media.title?.romaji || title,
     status: anilistStatus[media.status] || 'unknown',
     total,
     released,
@@ -213,7 +217,7 @@ const unknown = (title: string): TitleStatus => ({
 /** Where a title stands today. Throws when every source is unreachable. */
 export async function titleStatus(target: Target, lang: Lang): Promise<TitleStatus> {
   const { source, id } = target.catalog || {};
-  if (target.kind === 'anime') return animeStatus(target);
+  if (target.kind === 'anime') return animeStatus(target, lang);
   if (target.kind === 'series' && source === 'tmdb' && /^\d{1,9}$/.test(id || ''))
     return tmdbSeriesStatus(target, id!, lang);
   if (target.kind === 'series' && source === 'tvmaze' && /^\d{1,9}$/.test(id || ''))
