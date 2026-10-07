@@ -74,6 +74,8 @@ import AuthPanel, { type AuthMode, type AuthStatus } from './auth-panel';
 import { SiteHeader, BottomNav, type View } from './site-header';
 import HomeView from './home-view';
 import NotificationSettings from './notification-settings';
+import AssistantView from './assistant-view';
+import { applyOps, type Op } from '@/lib/assistant/ops';
 import type { Feed } from '@/lib/catalog-gateway';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { useI18n } from './i18n-provider';
@@ -521,6 +523,16 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
     if (ok) toast.success(t.toasts.addedToList(item.title));
     return ok;
   };
+  const openAuth = (mode: AuthMode) => {
+    setAuthScreen({ mode, nonce: Date.now() });
+    navigate('account');
+  };
+  // Changes the assistant proposed, applied to the collection as it is now.
+  const applyAssistant = async (ops: Op[]) => {
+    const ok = await commit(applyOps(state, ops));
+    if (ok) toast.success(t.assistant.appliedToast);
+    return ok;
+  };
   const sessionRow = (s: Session) => {
     const m = state.media.find((m) => m.id === s.mediaId);
     if (!m) return null;
@@ -644,10 +656,7 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
         onSearch={(query) => openCatalog(catalogTarget.kind, 'popular', query)}
         onProfileChange={refreshAccount}
         onSignedOut={() => window.location.reload()}
-        onAuth={(mode) => {
-          setAuthScreen({ mode, nonce: Date.now() });
-          navigate('account');
-        }}
+        onAuth={openAuth}
       />
       <main className="workspace">
         {error && (
@@ -981,12 +990,15 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
               </>
             )}
             {view === 'assistant' && (
-              <Assistant
-                key={auth.user?.id}
-                expectedUserId={auth.user?.id || ''}
+              <AssistantView
+                key={auth.user?.id || 'guest'}
+                userId={auth.user?.id || null}
                 aiReady={aiReady}
                 state={state}
+                canApply={canAct}
+                onApply={applyAssistant}
                 onPlanning={() => navigate('planning')}
+                onSignIn={() => openAuth('login')}
               />
             )}
             {view === 'planning' && (
@@ -1785,186 +1797,5 @@ function SettingsEditor({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-function Assistant({
-  aiReady,
-  state,
-  onPlanning,
-  expectedUserId,
-}: {
-  aiReady: boolean;
-  state: WatchState;
-  onPlanning: () => void;
-  expectedUserId: string;
-}) {
-  const { t } = useI18n();
-  const [key, setKey] = useState('');
-  const [confirmed, setConfirmed] = useState(false);
-  const [question, setQuestion] = useState('');
-  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const [failed, setFailed] = useState('');
-  const chatEnd = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    chatEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [messages, busy]);
-  const ask = async (text: string) => {
-    if (!text.trim() || busy) return;
-    if (!aiReady && (!key.trim() || !confirmed)) {
-      setErr(t.assistant.needKey);
-      return;
-    }
-    setBusy(true);
-    setErr('');
-    setFailed('');
-    const history = messages.slice(-8);
-    try {
-      const r = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, apiKey: key.trim() || undefined, history, expectedUserId }),
-      });
-      const data: any = await r.json();
-      if (!r.ok) throw new Error(data.error || t.assistant.unavailable);
-      setMessages((m) => [...m, { role: 'user', text }, { role: 'model', text: data.text }]);
-      setQuestion('');
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : t.assistant.unavailable);
-      setFailed(text);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="ai-layout">
-      <section className="panel ai-main">
-        {!messages.length ? (
-          <div className="ai-intro">
-            <div className="sparkle-box">
-              <Sparkles size={30} />
-            </div>
-            <h2>{t.assistant.introTitle}</h2>
-            <p>{t.assistant.intro(state.settings.budget)}</p>
-            <div className="suggested-prompts">
-              {t.assistant.prompts.map((prompt) => (
-                <button key={prompt.label} disabled={busy} onClick={() => ask(prompt.text)}>
-                  {prompt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="chat-list" aria-live="polite">
-            {messages.map((m, i) => (
-              <div className={`chat-message ${m.role}`} key={i}>
-                {m.role === 'model' && <span className="chat-label">GEMINI · AFTERWATCH</span>}
-                {m.text}
-              </div>
-            ))}
-            <div ref={chatEnd} />
-          </div>
-        )}
-        {busy && (
-          <p className="inline-note" role="status">
-            <LoaderCircle size={16} className="loading-icon" />
-            {t.assistant.thinking}
-          </p>
-        )}
-        {err && (
-          <div className="notice danger" role="alert">
-            {err}
-            {failed && (
-              <button className="ghost-btn small-btn" disabled={busy} onClick={() => ask(failed)}>
-                {t.common.retry}
-              </button>
-            )}
-          </div>
-        )}
-        <form
-          className="chat-input"
-          onSubmit={(e) => {
-            e.preventDefault();
-            ask(question);
-          }}
-        >
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder={t.assistant.placeholder}
-            aria-label={t.assistant.messageAria}
-            maxLength={2500}
-            rows={2}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                ask(question);
-              }
-            }}
-          />
-          <button className="primary" aria-label={t.assistant.sendAria} disabled={busy || !question.trim()}>
-            <Send size={18} />
-          </button>
-        </form>
-        <p className="form-hint mt-24">{t.assistant.disclaimer}</p>
-      </section>
-      <aside className="panel key-panel">
-        <h2>
-          <KeyRound size={19} />
-          {aiReady ? t.assistant.connected : t.assistant.connect}
-        </h2>
-        <div className="key-details">
-          {!aiReady ? (
-            <div>
-              <p>
-                {t.assistant.createKeyBefore}{' '}
-                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
-                  Google AI Studio
-                </a>{' '}
-                {t.assistant.createKeyAfter}
-              </p>
-              <label className="field">
-                <span>{t.assistant.keyLabel}</span>
-                <input
-                  type="password"
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  placeholder={t.assistant.keyPlaceholder}
-                />
-              </label>
-              <p className="form-hint">{t.assistant.keyHint}</p>
-              <label className="check-line">
-                <Checkbox checked={confirmed} onCheckedChange={(v) => setConfirmed(v === true)} />
-                <span className="form-hint">{t.assistant.freeTier}</span>
-              </label>
-            </div>
-          ) : (
-            <p>{t.assistant.serverConfigured}</p>
-          )}
-          <div>
-            <div className="notice">{t.assistant.quota}</div>
-            <p>{t.assistant.data}</p>
-            <a
-              className="form-hint"
-              href="https://ai.google.dev/gemini-api/docs/pricing"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t.assistant.terms}
-            </a>
-            <div className="divider mt-24" />
-            <p>{t.assistant.withoutAi}</p>
-            <button className="secondary full" onClick={onPlanning}>
-              <CalendarDays size={16} />
-              {t.assistant.autoPlanning}
-            </button>
-          </div>
-        </div>
-      </aside>
-    </div>
   );
 }

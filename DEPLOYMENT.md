@@ -132,8 +132,11 @@ Ajouter les deux variables publiques Supabase dans les environnements nécessair
 Ajouter la variable Telegram seulement si son fournisseur fonctionne. Ces valeurs
 `NEXT_PUBLIC_*` sont intégrées au build : les modifier exige un nouveau déploiement.
 
-Laisser `GEMINI_API_KEY` vide si chaque utilisateur apporte sa clé Google AI Studio.
-Une clé serveur facultative serait partagée par les membres et consommerait son quota.
+`GEMINI_API_KEY` (clé Google AI Studio) active l'assistant pour tous les membres, avec une limite
+de 30 messages par membre et par jour : exécuter d'abord
+`supabase/migrations/202610070002_assistant_usage.sql`. Sans clé, l'assistant est désactivé.
+Activer la facturation du projet Google avant l'ouverture au public : sur le palier gratuit,
+Google peut utiliser les conversations pour améliorer ses produits. `GEMINI_MODEL` est facultatif.
 
 Déployer d'abord une prévisualisation et tester : catalogue invité, lien e-mail,
 Telegram, liaison de compte, sauvegarde sur deux appareils avec conflit de version,

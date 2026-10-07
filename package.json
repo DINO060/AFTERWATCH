@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint app lib hooks tests proxy.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types tests/auth-security.test.mjs && node --experimental-strip-types tests/i18n.test.mjs && node --experimental-strip-types tests/notify.test.mjs && node tests/catalog.mjs",
+    "test": "node --experimental-strip-types tests/auth-security.test.mjs && node --experimental-strip-types tests/i18n.test.mjs && node --experimental-strip-types tests/notify.test.mjs && node --experimental-strip-types tests/assistant.test.mjs && node tests/catalog.mjs",
     "format": "prettier --write app lib hooks tests proxy.ts"
   },
   "dependencies": {

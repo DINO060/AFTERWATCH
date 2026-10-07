@@ -8,7 +8,7 @@ collection privée, progression, priorités et planning hebdomadaire.
 
 La migration vise **Next.js sur Vercel** et **Supabase Auth / PostgreSQL**.
 Le catalogue est accessible sans compte. Un compte est nécessaire pour enregistrer
-une collection, un planning ou utiliser Gemini.
+une collection, un planning ou utiliser l'assistant.
 
 ## Développement
 
@@ -58,22 +58,18 @@ Le planning automatique respecte les priorités, les jours disponibles et le bud
 quotidien. Il attend confirmation avant d'ajouter les séances. Terminer une séance
 met à jour la progression.
 
-Gemini 2.5 Flash répond uniquement sur demande. Chaque utilisateur peut fournir sa
-clé Google AI Studio d'un projet sans facturation. Cette clé reste en mémoire dans
-l'écran, n'est pas enregistrée dans la collection et disparaît en quittant l'écran.
-Le serveur contacte exclusivement l'API Gemini par HTTPS. Aucun appel OpenAI ni
-basculement automatique vers une offre payante n'est ajouté.
-
-`GEMINI_API_KEY` est facultative. Sur un site public, la laisser vide permet à
-chaque utilisateur d'utiliser son propre quota. L'application ne peut pas vérifier
-la facturation d'un projet Google. Gemini conseille sans modifier les données et
-ne vérifie pas les sorties en direct.
+L'assistant (Gemini, clé serveur `GEMINI_API_KEY`) utilise des outils : recherche
+dans le catalogue, sorties en direct (AniList pour les animes, TMDB et TVmaze pour
+les séries), et propositions de changements (titres, progression, séances). Le
+planning est calculé par le code (`lib/assistant/planner.ts`), pas par le modèle.
+Aucun changement n'est enregistré sans le bouton « Appliquer » du membre. Chaque
+membre dispose de 30 messages par jour (fonction SQL `use_assistant_message`).
 
 Les rappels nécessitent une application ouverte. Lier Telegram n'active pas encore
 de rappels dans Telegram : un bot et un ordonnanceur restent à développer.
 
 La PWA dispose d'un manifeste et d'un écran hors connexion. Internet reste requis
-pour les données, le catalogue et Gemini. Le service worker ne conserve aucune
+pour les données, le catalogue et l'assistant. Le service worker ne conserve aucune
 page privée ni réponse API. Aucun APK ou installateur Windows n'est généré.
 
 ## Fichiers principaux
@@ -86,7 +82,7 @@ page privée ni réponse API. Aucun APK ou installateur Windows n'est généré.
 - `lib/server.ts`, `app/api/state/route.ts` : validation et sauvegarde.
 - `supabase/migrations/` : schéma PostgreSQL, RLS et contrôle de version.
 - `supabase/tests/` : tests SQL d'isolation et de conflits de version.
-- `app/api/assistant/route.ts` : Gemini.
+- `app/api/assistant/route.ts` et `lib/assistant/` : l'assistant (Gemini et ses outils).
 - `vercel.json` : configuration du déploiement Next.js.
 
 Le fichier `.openai/hosting.json` identifie l'ancien hébergement Sites. Le nouveau
