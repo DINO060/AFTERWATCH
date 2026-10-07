@@ -22,7 +22,11 @@ async function handle(request: Request) {
     return Response.json(summary, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('notify_run_failed', error instanceof Error ? error.message : 'unknown');
-    return Response.json({ error: 'Run failed' }, { status: 500 });
+    // Only the scheduled caller sees this: the failing step and Supabase's error code, never data.
+    return Response.json(
+      { error: 'Run failed', step: error instanceof Error ? error.message.slice(0, 120) : 'unknown' },
+      { status: 500 },
+    );
   }
 }
 

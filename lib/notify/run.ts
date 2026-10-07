@@ -87,10 +87,10 @@ export async function runNotifications(site: string, now = Date.now()): Promise<
   const { error: runError } = await admin
     .from('cron_state')
     .upsert({ name: 'notify', last_run_at: summary.now });
-  if (runError) throw new Error('cron_state update failed');
+  if (runError) throw new Error(`cron_state update failed (${runError.code || 'no code'})`);
 
   const { data: prefRows, error: prefError } = await admin.from('notification_prefs').select('*').or(anyOn);
-  if (prefError) throw new Error('notification_prefs read failed');
+  if (prefError) throw new Error(`notification_prefs read failed (${prefError.code || 'no code'})`);
   const prefs = (prefRows || []) as Prefs[];
   summary.members = prefs.length;
   if (!prefs.length) return summary;
@@ -187,7 +187,7 @@ export async function runNotifications(site: string, now = Date.now()): Promise<
       { onConflict: 'user_id,kind,ref,channel', ignoreDuplicates: true },
     )
     .select('user_id, kind, ref, channel');
-  if (claimError) throw new Error('notification_log claim failed');
+  if (claimError) throw new Error(`notification_log claim failed (${claimError.code || 'no code'})`);
   const mine = new Set((claimed || []).map(itemKey));
   const toSend = queue.filter((q) => mine.has(itemKey(q)));
 
