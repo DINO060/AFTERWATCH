@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       execute: toolbox.execute,
       deadline: started + 50000,
     });
-    return Response.json({ text, ops: toolbox.ops, remaining }, { headers });
+    return Response.json({ text, ops: toolbox.ops, cards: toolbox.cards, remaining }, { headers });
   } catch (e) {
     if (e instanceof AssistantFailure) {
       const error =

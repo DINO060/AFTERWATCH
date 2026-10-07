@@ -693,7 +693,7 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
             </div>
           </div>
         )}
-        {view !== 'home' && (
+        {view !== 'home' && view !== 'assistant' && (
           <div className="page-heading">
             <div>
               <p className="eyebrow">{t.app.eyebrow}</p>

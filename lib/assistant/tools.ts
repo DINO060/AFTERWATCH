@@ -10,6 +10,7 @@ import { catalogKinds, kindKeys, type CatalogKind, type Kind, type Media, type W
 import { applyOps, patchMedia, type Op } from './ops';
 import { nextEpisode, planSessions, toMinute, type LocalTime } from './planner';
 import { titleStatus, type Release, type TitleStatus } from './sources';
+import type { LocalWhen, StatusCard } from './cards';
 
 const statuses = ['watching', 'later', 'paused', 'completed'] as const;
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -278,11 +279,18 @@ export function createToolbox(initial: WatchState, lang: Lang, zone: string, now
   const ops: Op[] = [];
   const statusCache = new Map<string, Promise<TitleStatus>>();
   const today = localTime(now, zone);
-  const when = (r: Release) => {
-    if (r.dateOnly) return new Date(r.at).toISOString().slice(0, 10);
+  const local = (r: Release): LocalWhen => {
+    if (r.dateOnly) return { date: new Date(r.at).toISOString().slice(0, 10) };
     const t = localTime(r.at, zone);
-    return `${t.date} ${pad(Math.floor(t.minute / 60))}:${pad(t.minute % 60)}`;
+    return { date: t.date, time: `${pad(Math.floor(t.minute / 60))}:${pad(t.minute % 60)}` };
   };
+  const when = (r: Release) => {
+    const l = local(r);
+    return l.time ? `${l.date} ${l.time}` : l.date;
+  };
+  // What the member sees next to the answer: checked titles, with their poster.
+  const cards = new Map<string, StatusCard>();
+  const seen = new Map<string, { title: string; poster: string; kind: Kind }>();
   const propose = (op: Op) => {
     ops.push(op);
     draft = applyOps(draft, [op]);
@@ -292,18 +300,21 @@ export function createToolbox(initial: WatchState, lang: Lang, zone: string, now
     if (!statusCache.has(key)) statusCache.set(key, titleStatus(target, lang));
     return statusCache.get(key)!;
   };
-  const brief = (item: CatalogItem) => ({
-    ref: refOf(item),
-    title: item.title,
-    year: item.catalog.year || undefined,
-    format: item.catalog.format || undefined,
-    status: item.catalog.releaseStatus || undefined,
-    episodes: item.catalog.episodes ?? undefined,
-    chapters: item.catalog.chapters ?? undefined,
-    seasons: item.catalog.seasons ?? undefined,
-    genres: item.catalog.genres.slice(0, 4),
-    in_collection: draft.media.find((m) => sameTitle(m, item))?.id ?? null,
-  });
+  const brief = (item: CatalogItem) => {
+    seen.set(refOf(item), { title: item.title, poster: item.poster, kind: item.kind });
+    return {
+      ref: refOf(item),
+      title: item.title,
+      year: item.catalog.year || undefined,
+      format: item.catalog.format || undefined,
+      status: item.catalog.releaseStatus || undefined,
+      episodes: item.catalog.episodes ?? undefined,
+      chapters: item.catalog.chapters ?? undefined,
+      seasons: item.catalog.seasons ?? undefined,
+      genres: item.catalog.genres.slice(0, 4),
+      in_collection: draft.media.find((m) => sameTitle(m, item))?.id ?? null,
+    };
+  };
 
   const run: { [K in ToolName]: (input: z.infer<(typeof args)[K]>) => Promise<unknown> } = {
     async search_catalog({ kind, query }) {
@@ -327,14 +338,30 @@ export function createToolbox(initial: WatchState, lang: Lang, zone: string, now
             : { ...parseRef(t.ref!), title: '' };
           try {
             const s = await statusOf(media?.id || t.ref!, target);
+            const left = media && s.released !== null ? Math.max(0, s.released - media.progress) : undefined;
+            const key = media?.id || t.ref!;
+            if (cards.size < 12 || cards.has(key))
+              cards.set(key, {
+                key,
+                inCollection: !!media,
+                title: media?.title || s.title || seen.get(key)?.title || '',
+                kind: target.kind,
+                poster: media?.poster || seen.get(key)?.poster || '',
+                status: s.status,
+                total: s.total,
+                released: s.released,
+                progress: media?.progress,
+                left,
+                next: s.next ? { ...local(s.next), episode: s.next.episode } : null,
+                finale: s.finale ? { ...local(s.finale), estimated: s.finale.estimated } : null,
+              });
             return {
               ...(media ? { media_id: media.id, progress: media.progress } : { ref: t.ref }),
               title: media?.title || s.title,
               status: s.status,
               total: s.total,
               released: s.released,
-              left_to_watch:
-                media && s.released !== null ? Math.max(0, s.released - media.progress) : undefined,
+              left_to_watch: left,
               next: s.next ? { episode: s.next.episode, when: when(s.next) } : null,
               finale: s.finale
                 ? { episode: s.finale.episode, when: when(s.finale), estimated: s.finale.estimated }
@@ -521,6 +548,10 @@ export function createToolbox(initial: WatchState, lang: Lang, zone: string, now
     ops,
     get state() {
       return draft;
+    },
+    /** Checked titles still worth showing (a title removed meanwhile is left out). */
+    get cards(): StatusCard[] {
+      return [...cards.values()].filter((c) => !c.inCollection || find(c.key));
     },
     /** Runs one tool call; bad arguments come back as an error the model can correct. */
     async execute(name: string, input: unknown): Promise<unknown> {
