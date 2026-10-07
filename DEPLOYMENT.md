@@ -158,6 +158,8 @@ Trois envois : rappel au début d'une séance, nouvel épisode (anime via AniLis
 via TMDB/TVmaze) et résumé du lundi 9 h. Chaque membre les active dans « Mon compte ».
 
 1. **SQL** : exécuter `supabase/migrations/202610060001_notifications.sql` une fois.
+   Puis `202610070001_notifications_server_access.sql` : le projet n’expose pas
+   automatiquement les nouvelles tables, le rôle serveur a besoin de droits explicites.
 2. **Vercel → Environment Variables** (Production et Preview) : `SUPABASE_SECRET_KEY`
    (Supabase → Project Settings → API Keys → Secret key), `RESEND_API_KEY` (Resend → API
    Keys, accès « Sending » au domaine), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
