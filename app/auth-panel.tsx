@@ -28,6 +28,7 @@ import {
 import { DISPLAY_NAME_MAX } from '@/lib/display-name';
 import { PASSWORD_MIN, passwordProblem } from '@/lib/password';
 import type { Messages } from '@/lib/i18n';
+import { legalPaths } from '@/lib/legal';
 import { useI18n } from './i18n-provider';
 
 // Messages are kept as keys so they follow a language switch while on screen.
@@ -541,6 +542,17 @@ export function AuthPanel({
                   {spinner('signup', <UserPlus size={16} />)}
                   {t.auth.signupButton}
                 </button>
+                <p className="form-hint">
+                  {t.legal.signupBefore}{' '}
+                  <a href={legalPaths.terms} target="_blank" rel="noreferrer">
+                    {t.legal.signupTerms}
+                  </a>{' '}
+                  {t.legal.signupAnd}{' '}
+                  <a href={legalPaths.privacy} target="_blank" rel="noreferrer">
+                    {t.legal.signupPrivacy}
+                  </a>
+                  .
+                </p>
               </form>
             ) : screen === 'magic' ? (
               <form className="auth-form" onSubmit={sendMagicLink}>

@@ -75,6 +75,8 @@ import { SiteHeader, BottomNav, type View } from './site-header';
 import HomeView from './home-view';
 import NotificationSettings from './notification-settings';
 import AssistantView from './assistant-view';
+import { DataSettings, UsernameSettings } from './account-settings';
+import { CONTACT_EMAIL, legalPaths } from '@/lib/legal';
 import { applyOps, type Op } from '@/lib/assistant/ops';
 import type { Feed } from '@/lib/catalog-gateway';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
@@ -286,6 +288,13 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
       setRecovery(true);
       setView('account');
       params.delete('auth');
+    }
+    // Back from "Supprimer mon compte".
+    if (params.get('account') === 'deleted') {
+      toast.success(tRef.current.account.deleted);
+      params.delete('account');
+    }
+    if (params.toString() !== window.location.search.replace(/^\?/, '')) {
       const query = params.toString();
       window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
     }
@@ -743,7 +752,9 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
                     recovery={recovery}
                     onProfileChange={refreshAccount}
                   />
+                  {auth.user && <UsernameSettings key={`name-${auth.user.id}`} />}
                   {auth.user && <NotificationSettings key={auth.user.id} />}
+                  {auth.user && <DataSettings key={`data-${auth.user.id}`} userId={auth.user.id} />}
                   <div className="install-row">
                     <InstallApp />
                   </div>
@@ -1096,6 +1107,12 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
               <LockKeyhole size={12} />
               {auth.user ? t.app.footerPrivate : t.app.footerPublic}
             </p>
+            <nav className="legal-footer" aria-label={t.legal.footerAria}>
+              <a href={legalPaths.notice}>{t.legal.notice}</a>
+              <a href={legalPaths.privacy}>{t.legal.privacy}</a>
+              <a href={legalPaths.terms}>{t.legal.terms}</a>
+              <a href={`mailto:${CONTACT_EMAIL}`}>{t.legal.contact}</a>
+            </nav>
           </>
         ) : null}
       </main>
