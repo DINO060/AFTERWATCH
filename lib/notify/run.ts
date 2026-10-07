@@ -57,7 +57,7 @@ async function pool<T>(items: T[], limit: number, task: (item: T) => Promise<voi
 }
 
 /** The kind of Supabase key configured (a public key here would be a mistake), never its value. */
-function keyKind(key: string): string {
+export function keyKind(key: string): string {
   if (!key) return 'none';
   if (key.startsWith('sb_secret_')) return 'secret';
   if (key.startsWith('sb_publishable_')) return 'publishable (wrong key)';

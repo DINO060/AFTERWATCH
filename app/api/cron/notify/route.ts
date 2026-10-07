@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { runNotifications } from '@/lib/notify/run';
+import { keyKind, runNotifications } from '@/lib/notify/run';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -24,7 +24,11 @@ async function handle(request: Request) {
     console.error('notify_run_failed', error instanceof Error ? error.message : 'unknown');
     // Only the scheduled caller sees this: the failing step and Supabase's error code, never data.
     return Response.json(
-      { error: 'Run failed', step: error instanceof Error ? error.message.slice(0, 120) : 'unknown' },
+      {
+        error: 'Run failed',
+        step: error instanceof Error ? error.message.slice(0, 120) : 'unknown',
+        keyKind: keyKind(process.env.SUPABASE_SECRET_KEY?.trim() || ''),
+      },
       { status: 500 },
     );
   }
