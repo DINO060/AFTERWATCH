@@ -133,8 +133,8 @@ Ajouter la variable Telegram seulement si son fournisseur fonctionne. Ces valeur
 `NEXT_PUBLIC_*` sont intégrées au build : les modifier exige un nouveau déploiement.
 
 `GEMINI_API_KEY` (clé Google AI Studio) active l'assistant pour tous les membres, avec une limite
-de 30 messages par membre et par jour : exécuter d'abord
-`supabase/migrations/202610070002_assistant_usage.sql`. Sans clé, l'assistant est désactivé.
+de 10 messages par membre et par jour : exécuter d'abord
+`supabase/migrations/202610070002_assistant_usage.sql` puis `202610070003_assistant_daily_limit.sql`. Sans clé, l'assistant est désactivé.
 Activer la facturation du projet Google avant l'ouverture au public : sur le palier gratuit,
 Google peut utiliser les conversations pour améliorer ses produits. `GEMINI_MODEL` est facultatif.
 

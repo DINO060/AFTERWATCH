@@ -63,7 +63,8 @@ dans le catalogue, sorties en direct (AniList pour les animes, TMDB et TVmaze po
 les séries), et propositions de changements (titres, progression, séances). Le
 planning est calculé par le code (`lib/assistant/planner.ts`), pas par le modèle.
 Aucun changement n'est enregistré sans le bouton « Appliquer » du membre. Chaque
-membre dispose de 30 messages par jour (fonction SQL `use_assistant_message`).
+membre dispose de 10 messages par jour (fonction SQL `use_assistant_message`). Les journaux
+`assistant_usage` donnent le nombre de jetons de chaque message, jamais son contenu.
 
 Les rappels nécessitent une application ouverte. Lier Telegram n'active pas encore
 de rappels dans Telegram : un bot et un ordonnanceur restent à développer.
