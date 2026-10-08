@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   LogOut,
   Search,
+  ShieldCheck,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -21,7 +22,8 @@ import type { AccountUser, AuthMode } from './auth-panel';
 import InstallApp from './install-app';
 import { useI18n } from './i18n-provider';
 
-export type View = 'home' | 'catalog' | 'collection' | 'planning' | 'assistant' | 'account';
+export type View =
+  'home' | 'catalog' | 'collection' | 'planning' | 'assistant' | 'account' | 'discussion' | 'moderation';
 
 export function initials(name: string) {
   return (
@@ -45,6 +47,7 @@ export function SiteHeader({
   onProfileChange,
   onSignedOut,
   onAuth,
+  moderator = false,
 }: {
   view: View;
   onNavigate: (view: View) => void;
@@ -55,6 +58,7 @@ export function SiteHeader({
   onProfileChange: () => void;
   onSignedOut: () => void;
   onAuth: (mode: AuthMode) => void;
+  moderator?: boolean;
 }) {
   const { t, lang, setLang } = useI18n();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -146,6 +150,7 @@ export function SiteHeader({
         {user ? (
           <AccountMenu
             user={user}
+            moderator={moderator}
             onNavigate={onNavigate}
             onProfileChange={onProfileChange}
             onSignedOut={onSignedOut}
@@ -171,11 +176,13 @@ type MenuNote = '' | 'nameSaved' | 'nameInvalid' | 'nameFailed' | 'signoutFailed
 
 function AccountMenu({
   user,
+  moderator,
   onNavigate,
   onProfileChange,
   onSignedOut,
 }: {
   user: AccountUser;
+  moderator: boolean;
   onNavigate: (view: View) => void;
   onProfileChange: () => void;
   onSignedOut: () => void;
@@ -278,6 +285,12 @@ function AccountMenu({
           <Layers3 size={16} />
           {t.shell.myList}
         </button>
+        {moderator && (
+          <button className="menu-item" onClick={() => go('moderation')}>
+            <ShieldCheck size={16} />
+            {t.community.moderation}
+          </button>
+        )}
         <div className="menu-install">
           <InstallApp />
         </div>

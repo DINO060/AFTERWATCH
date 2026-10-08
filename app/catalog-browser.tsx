@@ -17,7 +17,9 @@ import {
   BookText,
   ChevronLeft,
   ChevronRight,
+  MessageCircle,
 } from 'lucide-react';
+import { refFromMedia, type TargetRef } from '@/lib/community';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetTitle, SheetDescription, SheetHeader } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -111,6 +113,7 @@ export function CatalogDetail({
   onClose,
   onAdd,
   onEdit,
+  onDiscuss,
 }: {
   item: CatalogItem;
   collection: Media[];
@@ -118,6 +121,7 @@ export function CatalogDetail({
   onClose: () => void;
   onAdd: (i: CatalogItem, priority: boolean) => Promise<boolean>;
   onEdit: (m: Media) => void;
+  onDiscuss?: (ref: TargetRef) => void;
 }) {
   const { t } = useI18n();
   const [detail, setDetail] = useState(item);
@@ -127,6 +131,7 @@ export function CatalogDetail({
   const [adding, setAdding] = useState(false);
   const [priority, setPriority] = useState(false);
   const current = collection.find((m) => sameTitle(m, detail));
+  const discussRef = refFromMedia({ kind: detail.kind, catalog: detail.catalog });
   useEffect(() => {
     const controller = new AbortController();
     setLoading(!!item.catalog.id);
@@ -266,6 +271,12 @@ export function CatalogDetail({
               </button>
               <p className="form-hint">{t.catalog.laterHint}</p>
             </>
+          )}
+          {onDiscuss && discussRef && (
+            <button className="secondary full" onClick={() => onDiscuss(discussRef)}>
+              <MessageCircle size={17} />
+              {t.community.discussion}
+            </button>
           )}
         </div>
       </SheetContent>

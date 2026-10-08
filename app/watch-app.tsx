@@ -27,6 +27,7 @@ import {
   CalendarPlus,
   X,
   Info,
+  MessageCircle,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
@@ -75,6 +76,9 @@ import { SiteHeader, BottomNav, type View } from './site-header';
 import HomeView from './home-view';
 import NotificationSettings from './notification-settings';
 import AssistantView from './assistant-view';
+import DiscussionView from './discussion-view';
+import ModerationView from './moderation-view';
+import { parseRefPath, refFromMedia, refPath, type TargetRef } from '@/lib/community';
 import { DataSettings, UsernameSettings } from './account-settings';
 import { CONTACT_EMAIL, legalPaths } from '@/lib/legal';
 import { applyOps, type Op } from '@/lib/assistant/ops';
@@ -164,7 +168,16 @@ function MediaImage({ media, className }: { media: Media; className?: string }) 
     </div>
   );
 }
-export default function WatchApp({ tmdb }: { tmdb: boolean }) {
+export default function WatchApp({
+  tmdb,
+  initialRef = null,
+  initialView = 'home',
+}: {
+  tmdb: boolean;
+  /** Opened at a discussion's own address (/oeuvre/…). */
+  initialRef?: TargetRef | null;
+  initialView?: View;
+}) {
   const { t, locale } = useI18n();
   // load() is an effect dependency: read the texts through a ref so a language switch does not refetch.
   const tRef = useRef(t);
@@ -187,7 +200,11 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [aiReady, setAiReady] = useState(false);
-  const [view, setView] = useState<View>('home');
+  const [view, setView] = useState<View>(initialRef ? 'discussion' : initialView);
+  const [discussionRef, setDiscussionRef] = useState<TargetRef | null>(initialRef);
+  const [moderator, setModerator] = useState(false);
+  // Whether the current discussion was opened from inside the app (then "back" goes back there).
+  const cameFromApp = useRef(false);
   // Which tab the account page opens on; the nonce remounts it when a header button is pressed again.
   const [authScreen, setAuthScreen] = useState<{ mode: AuthMode; nonce: number }>({
     mode: 'login',
@@ -208,7 +225,51 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
   const navigate = (next: View) => {
     setView(next);
     window.scrollTo({ top: 0 });
+    // Discussions and moderation have their own address; every other screen lives at /.
+    const path = next === 'moderation' ? '/moderation' : '/';
+    if (next !== 'discussion' && window.location.pathname !== path) window.history.pushState(null, '', path);
   };
+  const openDiscussion = (ref: TargetRef) => {
+    setCatalogDetail(null);
+    setDiscussionRef(ref);
+    setView('discussion');
+    window.scrollTo({ top: 0 });
+    if (window.location.pathname !== refPath(ref)) {
+      window.history.pushState({ afterwatch: true }, '', refPath(ref));
+      cameFromApp.current = true;
+    }
+  };
+  const leaveDiscussion = () => {
+    if (cameFromApp.current) window.history.back();
+    else navigate('home');
+  };
+  // Moderators see "Modération" in their account menu; the server checks the role again on every call.
+  useEffect(() => {
+    if (!auth.user) return;
+    let live = true;
+    fetch('/api/community?op=me', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { moderator: false }))
+      .then((data) => live && setModerator(data.moderator === true))
+      .catch(() => {});
+    return () => {
+      live = false;
+      setModerator(false);
+    };
+  }, [auth.user]);
+  // The browser's back and forward buttons move between discussions and screens.
+  useEffect(() => {
+    const onPop = () => {
+      const ref = parseRefPath(window.location.pathname);
+      if (ref) {
+        setDiscussionRef(ref);
+        setView('discussion');
+      } else if (window.location.pathname === '/moderation') setView('moderation');
+      else setView((v) => (v === 'discussion' || v === 'moderation' ? 'home' : v));
+      cameFromApp.current = !!(window.history.state && window.history.state.afterwatch);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   // "See all" on a home row, or a header search: open the catalog on that list.
   const openCatalog = (kind: CatalogKind, feed: Feed, query = '') => {
     setCatalogTarget({ kind, feed, query, nonce: Date.now() });
@@ -522,6 +583,11 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
     if (await commit(next)) toast.success(m.kind === 'manga' ? t.toasts.chapterLogged : t.toasts.logged);
   };
   const canAct = !!auth.user && loaded && !saving;
+  // From the list: the anime's last watched episode, otherwise the whole work.
+  const discussionOf = (m: Media): TargetRef => {
+    const work = refFromMedia(m)!;
+    return m.kind === 'anime' && m.progress > 0 ? { ...work, episode: m.progress } : work;
+  };
   const addCatalog = async (item: CatalogItem, priority: boolean) => {
     if (state.media.some((m) => sameTitle(m, item))) {
       toast.info(t.toasts.alreadyInCollection);
@@ -643,6 +709,12 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
                 <CalendarPlus />
                 {t.media.schedule}
               </DropdownMenuItem>
+              {refFromMedia(m) && (
+                <DropdownMenuItem onClick={() => openDiscussion(discussionOf(m))}>
+                  <MessageCircle />
+                  {t.community.discussion}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => setDeleteMedia(m)} className="danger">
                 <Trash2 />
                 {t.media.delete}
@@ -666,6 +738,7 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
         onProfileChange={refreshAccount}
         onSignedOut={() => window.location.reload()}
         onAuth={openAuth}
+        moderator={moderator}
       />
       <main className="workspace">
         {error && (
@@ -702,7 +775,7 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
             </div>
           </div>
         )}
-        {view !== 'home' && view !== 'assistant' && (
+        {view !== 'home' && view !== 'assistant' && view !== 'discussion' && view !== 'moderation' && (
           <div className="page-heading">
             <div>
               <p className="eyebrow">{t.app.eyebrow}</p>
@@ -1000,6 +1073,31 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
                 <p className="form-hint mt-24">{t.planning.hint(state.settings.timezone)}</p>
               </>
             )}
+            {view === 'discussion' &&
+              discussionRef &&
+              (authChecked ? (
+                <DiscussionView
+                  key={`${auth.user?.id || 'guest'}:${refPath(discussionRef)}`}
+                  refTarget={discussionRef}
+                  collection={state.media}
+                  signedIn={!!auth.user}
+                  onOpen={openDiscussion}
+                  onBack={leaveDiscussion}
+                  onSignIn={() => openAuth('login')}
+                />
+              ) : (
+                <p className="inline-note" role="status">
+                  {t.app.checkingSignIn}
+                </p>
+              ))}
+            {view === 'moderation' &&
+              (authChecked && auth.user ? (
+                <ModerationView key={auth.user.id} onOpen={openDiscussion} />
+              ) : (
+                <p className="inline-note" role="status">
+                  {authChecked ? t.community.notModerator : t.app.checkingSignIn}
+                </p>
+              ))}
             {view === 'assistant' && (
               <AssistantView
                 key={auth.user?.id || 'guest'}
@@ -1128,6 +1226,7 @@ export default function WatchApp({ tmdb }: { tmdb: boolean }) {
             setCatalogDetail(null);
             setMediaDialog(m);
           }}
+          onDiscuss={openDiscussion}
         />
       )}
       {mediaDialog !== undefined && (
