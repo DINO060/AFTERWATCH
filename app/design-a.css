@@ -1519,8 +1519,19 @@ h1 {
 .username-status.unavailable {
   color: #ff9a8f;
 }
-.account-export {
+/* Discreet on purpose: a text link, not a button. */
+.account-export-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted-foreground);
   text-decoration: none;
+}
+.account-export-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
 }
 .danger-btn {
   color: #ffb4ab;

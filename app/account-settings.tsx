@@ -211,10 +211,6 @@ export function DataSettings({ userId }: { userId: string }) {
       </div>
       <p className="subdued">{t.account.dataIntro}</p>
       <div className="row flex-wrap mt-24">
-        <a className="secondary account-export" href="/api/account/export" download>
-          <Download size={16} />
-          {t.account.export}
-        </a>
         <button
           className="secondary danger-btn"
           type="button"
@@ -228,6 +224,10 @@ export function DataSettings({ userId }: { userId: string }) {
           {t.account.deleteButton}
         </button>
       </div>
+      <a className="account-export-link" href="/api/account/export" download>
+        <Download size={14} aria-hidden />
+        {t.account.export}
+      </a>
       <AlertDialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
         <AlertDialogContent>
           <AlertDialogHeader>
