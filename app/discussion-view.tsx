@@ -84,7 +84,7 @@ const refQuery = (ref: TargetRef) =>
     ...(ref.episode !== null ? { episode: String(ref.episode) } : {}),
   }).toString();
 
-function useAgo() {
+export function useAgo() {
   const { locale } = useI18n();
   return (iso: string) => {
     const diff = (Date.parse(iso) - Date.now()) / 1000;
@@ -98,7 +98,7 @@ function useAgo() {
   };
 }
 
-function Poster({ src, className }: { src: string; className: string }) {
+export function Poster({ src, className }: { src: string; className: string }) {
   const [broken, setBroken] = useState(false);
   return src && !broken ? (
     <img
@@ -115,7 +115,7 @@ function Poster({ src, className }: { src: string; className: string }) {
   );
 }
 
-function Avatar({ name, small }: { name: string | null; small?: boolean }) {
+export function Avatar({ name, small }: { name: string | null; small?: boolean }) {
   const hue = name ? usernameHue(name) : 0;
   return (
     <span

@@ -78,6 +78,7 @@ import NotificationSettings from './notification-settings';
 import AssistantView from './assistant-view';
 import DiscussionView from './discussion-view';
 import ModerationView from './moderation-view';
+import CommunityView from './community-view';
 import { parseRefPath, refFromMedia, refPath, type TargetRef } from '@/lib/community';
 import { DataSettings, UsernameSettings } from './account-settings';
 import { CONTACT_EMAIL, legalPaths } from '@/lib/legal';
@@ -226,7 +227,7 @@ export default function WatchApp({
     setView(next);
     window.scrollTo({ top: 0 });
     // Discussions and moderation have their own address; every other screen lives at /.
-    const path = next === 'moderation' ? '/moderation' : '/';
+    const path = next === 'moderation' ? '/moderation' : next === 'community' ? '/communaute' : '/';
     if (next !== 'discussion' && window.location.pathname !== path) window.history.pushState(null, '', path);
   };
   const openDiscussion = (ref: TargetRef) => {
@@ -264,7 +265,8 @@ export default function WatchApp({
         setDiscussionRef(ref);
         setView('discussion');
       } else if (window.location.pathname === '/moderation') setView('moderation');
-      else setView((v) => (v === 'discussion' || v === 'moderation' ? 'home' : v));
+      else if (window.location.pathname === '/communaute') setView('community');
+      else setView((v) => (v === 'discussion' || v === 'moderation' || v === 'community' ? 'home' : v));
       cameFromApp.current = !!(window.history.state && window.history.state.afterwatch);
     };
     window.addEventListener('popstate', onPop);
@@ -1084,6 +1086,21 @@ export default function WatchApp({
                   onOpen={openDiscussion}
                   onBack={leaveDiscussion}
                   onSignIn={() => openAuth('login')}
+                />
+              ) : (
+                <p className="inline-note" role="status">
+                  {t.app.checkingSignIn}
+                </p>
+              ))}
+            {view === 'community' &&
+              (authChecked ? (
+                <CommunityView
+                  key={auth.user?.id || 'guest'}
+                  collection={state.media}
+                  signedIn={!!auth.user}
+                  onOpen={openDiscussion}
+                  onSignIn={() => openAuth('login')}
+                  onBrowse={() => navigate('catalog')}
                 />
               ) : (
                 <p className="inline-note" role="status">

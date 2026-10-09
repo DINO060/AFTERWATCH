@@ -47,6 +47,11 @@ const action = z.discriminatedUnion('op', [
     action: z.enum(['remove', 'dismiss']),
     ban: z.boolean(),
   }),
+  // A read with a body: the works of the member's list, to show their activity.
+  z.object({
+    op: z.literal('works'),
+    works: z.array(refSchema.pick({ kind: true, source: true, sourceId: true })).max(300),
+  }),
 ]);
 
 function failure(e: unknown, lang: Lang) {
@@ -106,6 +111,20 @@ export async function GET(request: Request) {
       ]);
       return Response.json({ guide, activity }, { headers });
     }
+    if (op === 'recent') {
+      const kind = p.get('kind');
+      const recent = await call(supabase, 'community_recent', {
+        p_kind: kind && ['anime', 'manga', 'series', 'film'].includes(kind) ? kind : null,
+        p_offset: z.coerce
+          .number()
+          .int()
+          .min(0)
+          .max(2000)
+          .parse(p.get('offset') || 0),
+        p_limit: 20,
+      });
+      return Response.json(recent, { headers });
+    }
     if (op === 'me') {
       const moderator = await call(supabase, 'community_is_moderator', {});
       return Response.json({ moderator: moderator === true }, { headers });
@@ -155,6 +174,8 @@ export async function POST(request: Request) {
         p_reason: a.reason,
         p_details: a.details,
       });
+    else if (a.op === 'works')
+      result = await call(supabase, 'community_works_activity', { p_works: a.works });
     else if (a.op === 'resolve')
       await call(supabase, 'community_resolve', { p_comment: a.comment, p_action: a.action, p_ban: a.ban });
     return Response.json(result, { headers });

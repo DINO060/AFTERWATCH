@@ -50,6 +50,7 @@ test.before(async () => {
     '202610070002_assistant_usage.sql',
     '202610080001_public_profiles.sql',
     '202610080002_community.sql',
+    '202610090001_community_hub.sql',
   ])
     await db.exec(migration(name));
   await db.exec(
@@ -305,4 +306,46 @@ test('a deleted account leaves "comment deleted" and keeps the others’ replies
   assert.equal(gone.replies[0].body, 'Incroyable', 'replies stay');
   assert.deepEqual(gone.replies[0].reactions, {}, 'their reactions go with the account');
   assert.equal((await value(E, 'community_summary', '$1', [SERIES])).verdicts, 0);
+});
+
+test('the community page: latest débriefs without spoiler text, and activity per work', async () => {
+  await rejects(null, rpc('community_recent', 'null, 0, 20'), [], /permission denied|Authentication/);
+  const recent = await value(E, 'community_recent', 'null, 0, 40', []);
+  assert.ok(recent.items.length > 0);
+  const times = recent.items.map((i) => i.createdAt);
+  assert.deepEqual(times, [...times].sort().reverse(), 'newest first');
+  assert.ok(
+    recent.items.every((i) => !i.deleted && i.parentId === undefined),
+    'no deleted débriefs, no replies',
+  );
+  for (const item of recent.items.filter((i) => i.spoiler !== 'none'))
+    assert.equal(item.body, null, 'a spoiler’s text never appears in the list');
+  assert.ok(
+    recent.items.some((i) => i.spoiler !== 'none'),
+    'spoilers are listed, veiled',
+  );
+  assert.ok(
+    recent.items.every((i) => i.target && i.target.title),
+    'each débrief says where it was posted',
+  );
+  const films = await value(E, 'community_recent', `'film', 0, 40`, []);
+  assert.ok(films.items.length > 0 && films.items.every((i) => i.target.kind === 'film'));
+  const page = await value(E, 'community_recent', 'null, 0, 2', []);
+  assert.equal(page.items.length, 2);
+  assert.equal(page.hasMore, true);
+  await rejects(E, rpc('community_recent', `'livre', 0, 20`), [], /invalid_kind/);
+
+  const works = await value(E, 'community_works_activity', '$1', [
+    JSON.stringify([
+      { kind: 'anime', source: 'kitsu', sourceId: '12' },
+      { kind: 'film', source: 'tmdb', sourceId: '27205' },
+      { kind: 'film', source: 'tmdb', sourceId: '999' },
+    ]),
+  ]);
+  const anime = works.find((w) => w.sourceId === '12');
+  const film = works.find((w) => w.sourceId === '27205');
+  assert.ok(anime.debriefs > 5, 'all episodes of the work count');
+  assert.equal(film.debriefs, 1);
+  assert.ok(!works.some((w) => w.sourceId === '999'), 'works without débriefs are left out');
+  await rejects(E, rpc('community_works_activity', `'{}'::jsonb`), [], /invalid_works/);
 });

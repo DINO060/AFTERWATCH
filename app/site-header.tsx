@@ -10,6 +10,7 @@ import {
   Layers3,
   LoaderCircle,
   LogOut,
+  MessageCircle,
   Search,
   ShieldCheck,
   Sparkles,
@@ -23,7 +24,15 @@ import InstallApp from './install-app';
 import { useI18n } from './i18n-provider';
 
 export type View =
-  'home' | 'catalog' | 'collection' | 'planning' | 'assistant' | 'account' | 'discussion' | 'moderation';
+  | 'home'
+  | 'catalog'
+  | 'collection'
+  | 'planning'
+  | 'assistant'
+  | 'account'
+  | 'discussion'
+  | 'moderation'
+  | 'community';
 
 export function initials(name: string) {
   return (
@@ -68,6 +77,7 @@ export function SiteHeader({
     { id: 'catalog', label: t.nav.catalog },
     { id: 'collection', label: t.shell.myList },
     { id: 'planning', label: t.nav.planning },
+    { id: 'community', label: t.shell.community },
   ];
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -86,7 +96,7 @@ export function SiteHeader({
           {links.map((link) => (
             <button
               key={link.id}
-              className={view === link.id ? 'active' : ''}
+              className={`${view === link.id ? 'active' : ''}${link.id === 'home' ? ' nav-home' : ''}`}
               aria-current={view === link.id ? 'page' : undefined}
               onClick={() => onNavigate(link.id)}
             >
@@ -121,8 +131,9 @@ export function SiteHeader({
           <Search size={18} />
         </button>
         <button
-          className={`pill-btn ai-btn ${view === 'assistant' ? 'active' : ''}`}
+          className={`pill-btn ai-btn${view === 'assistant' ? ' active' : ''}${user ? '' : ' guest'}`}
           aria-current={view === 'assistant' ? 'page' : undefined}
+          aria-label={t.shell.assistant}
           onClick={() => onNavigate('assistant')}
         >
           <Sparkles size={16} />
@@ -308,9 +319,9 @@ export function BottomNav({ view, onNavigate }: { view: View; onNavigate: (view:
   const items = [
     { id: 'home' as const, icon: House, label: t.shell.home },
     { id: 'catalog' as const, icon: Compass, label: t.nav.catalog },
+    { id: 'community' as const, icon: MessageCircle, label: t.shell.community },
     { id: 'collection' as const, icon: Layers3, label: t.shell.myList },
     { id: 'planning' as const, icon: CalendarDays, label: t.nav.planning },
-    { id: 'assistant' as const, icon: Sparkles, label: t.shell.ai },
   ];
   return (
     <nav className="bottom-nav" aria-label={t.shell.mainNav}>
