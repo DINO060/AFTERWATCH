@@ -29,6 +29,7 @@ import { DISPLAY_NAME_MAX } from '@/lib/display-name';
 import { PASSWORD_MIN, passwordProblem } from '@/lib/password';
 import type { Messages } from '@/lib/i18n';
 import { legalPaths } from '@/lib/legal';
+import { CaptchaBox, captchaEnabled } from './captcha';
 import { useI18n } from './i18n-provider';
 
 // Messages are kept as keys so they follow a language switch while on screen.
@@ -160,6 +161,10 @@ export function AuthPanel({
   const [busy, setBusy] = useState<Busy | null>(null);
   const [message, setMessage] = useState<AuthText | ''>('');
   const [error, setError] = useState<AuthText | ''>('');
+  // The anti-robot check's token, used once per attempt (null while it is coming).
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  const [captchaBroken, setCaptchaBroken] = useState(false);
   const knownUserId = useRef(user?.id || null);
   const authChange = useRef(onAuthChange);
 
@@ -220,8 +225,15 @@ export function AuthPanel({
       }
     } finally {
       setBusy(null);
+      if (captchaEnabled && (kind === 'login' || kind === 'signup' || kind === 'reset' || kind === 'magic')) {
+        setCaptcha(null);
+        setCaptchaNonce((n) => n + 1);
+      }
     }
   }
+  const token = captcha ?? undefined;
+  // Waiting for the anti-robot check (usually a second, without anything to do).
+  const checking = captchaEnabled && !captcha;
   const checkNewPassword = (value: string) => {
     const problem = passwordProblem(value);
     if (problem) throw new RangeError(problem);
@@ -229,7 +241,7 @@ export function AuthPanel({
 
   const logIn = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    run('login', () => logInWithPassword(email, password), 'sendFailed');
+    run('login', () => logInWithPassword(email, password, token), 'sendFailed');
   };
   const signUp = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -237,7 +249,7 @@ export function AuthPanel({
       'signup',
       async () => {
         checkNewPassword(password);
-        await signUpWithPassword(email, password, signupName);
+        await signUpWithPassword(email, password, signupName, token);
         setPasswordValue('');
       },
       'sendFailed',
@@ -246,7 +258,7 @@ export function AuthPanel({
   };
   const resetPassword = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    run('reset', () => sendPasswordReset(email), 'sendFailed', 'resetSent');
+    run('reset', () => sendPasswordReset(email, token), 'sendFailed', 'resetSent');
   };
   const sendMagicLink = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -257,7 +269,11 @@ export function AuthPanel({
         if (!supabase) throw new Error('Sign-in unavailable');
         const { error: authError } = await supabase.auth.signInWithOtp({
           email: email.trim(),
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback`, shouldCreateUser: true },
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+            shouldCreateUser: true,
+            captchaToken: token,
+          },
         });
         if (authError?.code === 'email_address_not_authorized') throw new RangeError('emailNotOpen');
         if (authError) throw authError;
@@ -401,6 +417,29 @@ export function AuthPanel({
     </form>
   );
 
+  // The anti-robot check sits just above the form's button (empty unless Cloudflare needs a click),
+  // its status just below.
+  const captchaBox = (
+    <CaptchaBox
+      nonce={captchaNonce}
+      onToken={(value) => {
+        setCaptcha(value);
+        if (value) setCaptchaBroken(false);
+      }}
+      onFail={() => setCaptchaBroken(true)}
+    />
+  );
+  const captchaNote = !checking ? null : captchaBroken ? (
+    <p className="notice danger" role="alert">
+      {t.auth.captchaFailed}
+    </p>
+  ) : (
+    <p className="form-hint captcha-hint" role="status">
+      <LoaderCircle className="loading-icon" size={14} />
+      {t.auth.captchaChecking}
+    </p>
+  );
+
   return (
     <section className="panel auth-panel" aria-label={t.auth.panelAria}>
       {!configured ? (
@@ -494,10 +533,12 @@ export function AuthPanel({
           <p className="subdued">{t.auth.forgotIntro}</p>
           <form className="auth-form mt-24" onSubmit={resetPassword}>
             {emailField}
-            <button className="primary" type="submit" disabled={Boolean(busy)}>
+            {captchaBox}
+            <button className="primary" type="submit" disabled={Boolean(busy) || checking}>
               {spinner('reset', <Mail size={16} />)}
               {t.auth.sendReset}
             </button>
+            {captchaNote}
           </form>
           <button className="link-btn mt-24" type="button" onClick={() => go('login')}>
             {t.auth.backToLogin}
@@ -549,10 +590,12 @@ export function AuthPanel({
                   disabled={Boolean(busy)}
                   hint={t.auth.passwordHint}
                 />
-                <button className="primary" type="submit" disabled={Boolean(busy)}>
+                {captchaBox}
+                <button className="primary" type="submit" disabled={Boolean(busy) || checking}>
                   {spinner('signup', <UserPlus size={16} />)}
                   {t.auth.signupButton}
                 </button>
+                {captchaNote}
                 <p className="form-hint">
                   {t.legal.signupBefore}{' '}
                   <a href={legalPaths.terms} target="_blank" rel="noreferrer">
@@ -568,10 +611,12 @@ export function AuthPanel({
             ) : screen === 'magic' ? (
               <form className="auth-form" onSubmit={sendMagicLink}>
                 {emailField}
-                <button className="primary" type="submit" disabled={Boolean(busy)}>
+                {captchaBox}
+                <button className="primary" type="submit" disabled={Boolean(busy) || checking}>
                   {spinner('magic', <Mail size={16} />)}
                   {t.auth.sendLink}
                 </button>
+                {captchaNote}
                 <button className="link-btn" type="button" onClick={() => go('login')}>
                   {t.auth.passwordInstead}
                 </button>
@@ -587,10 +632,12 @@ export function AuthPanel({
                   autoComplete="current-password"
                   disabled={Boolean(busy)}
                 />
-                <button className="primary" type="submit" disabled={Boolean(busy)}>
+                {captchaBox}
+                <button className="primary" type="submit" disabled={Boolean(busy) || checking}>
                   {spinner('login', <KeyRound size={16} />)}
                   {t.auth.loginButton}
                 </button>
+                {captchaNote}
                 <div className="auth-links">
                   <button className="link-btn" type="button" onClick={() => go('forgot')}>
                     {t.auth.forgotLink}

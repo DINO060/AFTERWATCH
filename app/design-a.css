@@ -1023,6 +1023,16 @@ h1 {
 .auth-panel {
   max-width: 560px;
 }
+/* The anti-robot check: empty unless Cloudflare needs a click, and then it takes no room. */
+.auth-form > .captcha-box:not(.shown) {
+  margin-bottom: -14px;
+}
+.captcha-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 0;
+}
 .auth-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

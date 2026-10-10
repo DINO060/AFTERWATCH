@@ -97,6 +97,7 @@ const fr: Record<LegalKind, LegalDoc> = {
             list: [
               'Vercel (hébergement du site), Supabase (comptes et base de données), Resend (e-mails).',
               'Google : Gemini pour l’assistant, et la connexion Google si tu l’utilises.',
+              'Cloudflare Turnstile : la vérification anti-robots à l’inscription et à la connexion. Elle analyse des signaux techniques de ton navigateur, sans cookie publicitaire.',
               'Le service de notifications de ton navigateur (Google, Apple, Mozilla ou Microsoft), qui reçoit seulement la notification à afficher.',
             ],
           },
@@ -327,6 +328,7 @@ const en: Record<LegalKind, LegalDoc> = {
             list: [
               'Vercel (website hosting), Supabase (accounts and database), Resend (e-mails).',
               'Google: Gemini for the assistant, and Google sign-in if you use it.',
+              'Cloudflare Turnstile: the anti-robot check when you sign up or sign in. It looks at technical signals from your browser, without advertising cookies.',
               'Your browser’s push service (Google, Apple, Mozilla or Microsoft), which only receives the notification to display.',
             ],
           },
