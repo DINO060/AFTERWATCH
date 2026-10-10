@@ -10,6 +10,8 @@ import {
   spoilerHidden,
   sameRef,
   workOf,
+  topReactions,
+  inCollection,
 } from '../lib/community.ts';
 
 const ref = (over = {}) => ({
@@ -151,4 +153,26 @@ test('spoilers stay hidden unless they only spoil what the viewer has seen', () 
   assert.equal(spoilerHidden('episode', false), true);
   assert.equal(spoilerHidden('episode', null), true, 'unknown progress keeps it hidden');
   assert.equal(spoilerHidden('later', true), true, 'later episodes stay hidden even when this one is seen');
+});
+
+test('with spoiler protection off, nothing is hidden', () => {
+  assert.equal(spoilerHidden('episode', false, false), false);
+  assert.equal(spoilerHidden('later', true, false), false);
+  assert.equal(spoilerHidden('episode', null, true), true, 'on by default');
+  assert.equal(spoilerHidden('none', null), false);
+});
+
+test('reactions read as "🔥😭🤯 12": the most used first, at most three', () => {
+  assert.deepEqual(topReactions({ cry: 4, fire: 6, mind: 2, heart: 1 }), {
+    emojis: ['🔥', '😭', '🤯'],
+    total: 13,
+  });
+  assert.deepEqual(topReactions({}), { emojis: [], total: 0 });
+});
+
+test('"+ Ma liste" knows a title already in the list by its catalog entry', () => {
+  const list = [{ kind: 'anime', catalog: { source: 'kitsu', id: '12' } }];
+  assert.equal(inCollection({ kind: 'anime', source: 'kitsu', sourceId: '12' }, list), true);
+  assert.equal(inCollection({ kind: 'anime', source: 'jikan', sourceId: '12' }, list), false);
+  assert.equal(inCollection({ kind: 'manga', source: 'kitsu', sourceId: '12' }, list), false);
 });

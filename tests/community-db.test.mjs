@@ -8,7 +8,7 @@ import { PGlite } from '@electric-sql/pglite';
 const migration = (name) =>
   fs.readFileSync(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8');
 const id = (n) => `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const [A, B, C, MOD, E, F, G] = [1, 2, 3, 4, 5, 6, 7].map(id);
+const [A, B, C, MOD, E, F, G, H, I, J] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(id);
 const db = new PGlite();
 
 async function as(user, query, params = []) {
@@ -51,10 +51,11 @@ test.before(async () => {
     '202610080001_public_profiles.sql',
     '202610080002_community.sql',
     '202610090001_community_hub.sql',
+    '202610100001_community_v2.sql',
   ])
     await db.exec(migration(name));
   await db.exec(
-    `insert into auth.users (id) values ${[A, B, C, MOD, E, F, G].map((u) => `('${u}')`).join(', ')}`,
+    `insert into auth.users (id) values ${[A, B, C, MOD, E, F, G, H, I, J].map((u) => `('${u}')`).join(', ')}`,
   );
   await db.exec(`insert into public.community_moderators (user_id) values ('${MOD}')`);
   for (const [user, name] of [
@@ -64,6 +65,8 @@ test.before(async () => {
     [E, 'eli'],
     [F, 'fanny'],
     [G, 'gina'],
+    [H, 'hugo'],
+    [I, 'ines'],
   ])
     await value(user, 'set_username', '$1', [name]);
 });
@@ -348,4 +351,159 @@ test('the community page: latest débriefs without spoiler text, and activity pe
   assert.equal(film.debriefs, 1);
   assert.ok(!works.some((w) => w.sourceId === '999'), 'works without débriefs are left out');
   await rejects(E, rpc('community_works_activity', `'{}'::jsonb`), [], /invalid_works/);
+});
+
+// ---------- Community v2 ----------
+const BACKDROP = 'https://image.tmdb.org/t/p/w1280/frieren.jpg';
+let FRIEREN, recoH;
+const ensureWide = (kind, source, sourceId, season, episode, title, backdrop = BACKDROP, year = '2023') =>
+  value('service', 'community_ensure_target', '$1, $2, $3, $4, $5, $6, $7, $8, $9', [
+    kind,
+    source,
+    sourceId,
+    season,
+    episode,
+    title,
+    '',
+    backdrop,
+    year,
+  ]);
+const recommend = (user, target, body, spoiler = 'none', score = null) =>
+  value(user, 'community_recommend', '$1, $2, $3, $4', [target, body, spoiler, score]);
+const feed = (user, kind, works = [], offset = 0, limit = 20) =>
+  value(user, 'community_feed', '$1, $2, $3, $4', [kind, JSON.stringify(works), offset, limit]);
+
+test('v2 works carry a wide image and a year; the earlier server function still works', async () => {
+  FRIEREN = await ensureWide('anime', 'kitsu', '46474', null, null, 'Frieren');
+  const row = await one(A, 'select backdrop, year from public.community_targets where id = $1', [FRIEREN]);
+  assert.deepEqual(row, { backdrop: BACKDROP, year: '2023' });
+  assert.equal(await ensure('anime', 'kitsu', '46474', null, null, 'Frieren'), FRIEREN, 'old signature');
+  await rejects(
+    'service',
+    rpc(
+      'community_ensure_target',
+      `'film', 'tmdb', '5', null, null, 'x', '', 'https://evil.example/b.jpg', ''`,
+    ),
+    [],
+    /check/,
+  );
+  await rejects(
+    H,
+    rpc('community_ensure_target', `'film', 'tmdb', '5', null, null, 'x', '', '', ''`),
+    [],
+    /permission denied/,
+  );
+});
+
+test('recommendations: whole works only, 500 characters, a username, and the verdict joins the work', async () => {
+  await rejects(J, rpc('community_recommend', `$1, 'Top', 'none', null`), [FRIEREN], /username_required/);
+  await rejects(H, rpc('community_recommend', `$1, 'Top', 'none', null`), [T1], /invalid_parent/);
+  await rejects(
+    H,
+    rpc('community_recommend', `$1, $2, 'none', null`),
+    [FRIEREN, 'x'.repeat(501)],
+    /invalid_body/,
+  );
+  await rejects(H, rpc('community_recommend', `$1, 'Top', 'later', null`), [FRIEREN], /invalid_spoiler/);
+  await rejects(H, rpc('community_recommend', `$1, 'Top', 'none', 0`), [FRIEREN], /invalid_score/);
+  await rejects(A, rpc('community_recommend', `$1, 'Top', 'none', null`), [FRIEREN], /banned/);
+  recoH = await recommend(H, FRIEREN, '  Un voyage calme qui reste longtemps en tête.  ', 'none', 9);
+  assert.equal(recoH.kind, 'reco');
+  assert.equal(recoH.body, 'Un voyage calme qui reste longtemps en tête.');
+  assert.equal(recoH.rating, 9, 'the verdict shows on the recommendation');
+  const again = await recommend(H, FRIEREN, 'Un voyage calme qui reste longtemps en tête.', 'none', 9);
+  assert.equal(again.id, recoH.id, 'sent twice, published once');
+  assert.equal((await value(H, 'community_summary', '$1', [FRIEREN])).myScore, 9, 'and counts for the work');
+  const t = await thread(I, FRIEREN);
+  assert.equal(t.comments[0].kind, 'reco', 'recommendations appear in the discussion of the work');
+  assert.equal((await add(I, FRIEREN, 'Pas encore vu')).kind, 'debrief');
+  await recommend(I, FRIEREN, 'La fin de la saison 1…', 'episode');
+});
+
+test('reactions to an episode: one per member, toggled or replaced, counted in the summary', async () => {
+  let r = await value(H, 'community_react_target', `$1, 'fire'`, [T1]);
+  assert.deepEqual(r, { targetReactions: { fire: 1 }, myTargetReaction: 'fire' });
+  r = await value(I, 'community_react_target', `$1, 'fire'`, [T1]);
+  assert.deepEqual(r.targetReactions, { fire: 2 });
+  r = await value(H, 'community_react_target', `$1, 'cry'`, [T1]);
+  assert.deepEqual(r, { targetReactions: { fire: 1, cry: 1 }, myTargetReaction: 'cry' });
+  r = await value(H, 'community_react_target', `$1, 'cry'`, [T1]);
+  assert.deepEqual(r, { targetReactions: { fire: 1 }, myTargetReaction: null });
+  const s = await value(I, 'community_summary', '$1', [T1]);
+  assert.deepEqual([s.targetReactions, s.myTargetReaction], [{ fire: 1 }, 'fire']);
+  await rejects(H, rpc('community_react_target', `$1, 'laugh'`), [T1], /invalid_reaction/);
+  await rejects(A, rpc('community_react_target', `$1, 'fire'`), [T1], /banned/);
+  await rejects(null, rpc('community_react_target', `$1, 'fire'`), [T1], /permission denied|Authentication/);
+  await rejects(H, 'select * from public.community_target_reactions', [], /permission denied/);
+});
+
+test('spoiler protection is on by default, per member', async () => {
+  assert.deepEqual(await value(H, 'community_get_prefs', '', []), { spoilerProtection: true });
+  assert.deepEqual(await value(H, 'community_set_prefs', 'false', []), { spoilerProtection: false });
+  assert.deepEqual(await value(H, 'community_get_prefs', '', []), { spoilerProtection: false });
+  assert.deepEqual(
+    await value(I, 'community_get_prefs', '', []),
+    { spoilerProtection: true },
+    'the others keep theirs',
+  );
+  await rejects(null, rpc('community_get_prefs', ''), [], /permission denied|Authentication/);
+  await rejects(H, 'select * from public.community_prefs', [], /permission denied/);
+});
+
+test('the feed: the works of the member first, spoiler text only once protection is off', async () => {
+  const mine = [{ kind: 'film', source: 'tmdb', sourceId: '27205' }];
+  const forI = await feed(I, null, mine, 0, 40);
+  assert.equal(forI.spoilerProtection, true);
+  assert.equal(forI.items[0].target.title, 'Inception', 'posts about the list of the member come first');
+  assert.equal(forI.items[0].inList, true);
+  assert.ok(forI.items.slice(1).every((i) => !i.inList));
+  const veiled = forI.items.filter((i) => i.spoiler !== 'none');
+  assert.ok(veiled.length > 0 && veiled.every((i) => i.body === null), 'spoilers are listed without text');
+  assert.ok(
+    forI.items.every((i) => i.parentId === undefined && !i.deleted),
+    'no replies, nothing deleted',
+  );
+  const reco = forI.items.find((i) => i.id === recoH.id);
+  assert.equal(reco.kind, 'reco');
+  assert.equal(reco.target.backdrop, BACKDROP);
+  assert.equal(reco.rating, 9);
+
+  const forH = await feed(H, null, [], 0, 40);
+  assert.equal(forH.spoilerProtection, false);
+  assert.ok(forH.items.filter((i) => i.spoiler !== 'none').every((i) => typeof i.body === 'string'));
+  const times = forH.items.map((i) => i.createdAt);
+  assert.deepEqual(times, [...times].sort().reverse(), 'without a list: newest first');
+
+  const films = await feed(I, 'film', []);
+  assert.ok(films.items.length > 0 && films.items.every((i) => i.target.kind === 'film'));
+  const page = await feed(I, null, [], 0, 2);
+  assert.equal(page.items.length, 2);
+  assert.equal(page.hasMore, true);
+  const next = await feed(I, null, [], 2, 2);
+  assert.ok(!next.items.some((i) => page.items.some((p) => p.id === i.id)), 'pages do not overlap');
+  await rejects(I, rpc('community_feed', `'livre', '[]', 0, 20`), [], /invalid_kind/);
+  await rejects(I, rpc('community_feed', `null, '{}', 0, 20`), [], /invalid_works/);
+  await rejects(null, rpc('community_feed', `null, '[]', 0, 20`), [], /permission denied|Authentication/);
+
+  const bodies = await value(I, 'community_bodies', '$1', [veiled.map((v) => v.id)]);
+  assert.ok(veiled.every((v) => typeof bodies[v.id] === 'string' && bodies[v.id].length > 0));
+});
+
+test('tes discussions and à découvrir', async () => {
+  const works = await value(I, 'community_works_activity', '$1', [
+    JSON.stringify([
+      { kind: 'anime', source: 'kitsu', sourceId: '12' },
+      { kind: 'anime', source: 'kitsu', sourceId: '12' },
+    ]),
+  ]);
+  assert.equal(works.length, 1, 'a work listed twice counts once');
+  assert.ok('episode' in works[0].latest, 'says which episode was talked about last');
+  const discover = await value(I, 'community_discover', '$1, 4', [JSON.stringify([])]);
+  assert.equal(discover[0].title, 'Frieren');
+  assert.equal(discover[0].recos, 2);
+  assert.equal(discover[0].backdrop, BACKDROP);
+  const known = await value(I, 'community_discover', '$1, 4', [
+    JSON.stringify([{ kind: 'anime', source: 'kitsu', sourceId: '46474' }]),
+  ]);
+  assert.ok(!known.some((w) => w.sourceId === '46474'), 'works already in the list are left out');
 });

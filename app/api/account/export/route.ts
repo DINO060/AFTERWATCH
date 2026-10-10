@@ -48,6 +48,39 @@ export async function GET(request: Request) {
     const assistant = admin
       ? await read(admin.from('assistant_usage').select('day, count').eq('user_id', user.id), 'assistant')
       : null;
+    // What the member posted in the community, read the same way (members only reach it through functions).
+    const community = admin
+      ? await Promise.all([
+          read(
+            admin
+              .from('community_comments')
+              .select(
+                'kind, body, spoiler, created_at, edited_at, deleted_at, removed, parent_id, target:community_targets(kind, title, season, episode)',
+              )
+              .eq('author_id', user.id)
+              .order('created_at'),
+            'community posts',
+          ),
+          read(
+            admin
+              .from('community_ratings')
+              .select('score, updated_at, target:community_targets(kind, title, season, episode)')
+              .eq('user_id', user.id),
+            'community verdicts',
+          ),
+          read(
+            admin
+              .from('community_target_reactions')
+              .select('reaction, created_at, target:community_targets(kind, title, season, episode)')
+              .eq('user_id', user.id),
+            'community reactions',
+          ),
+          read(
+            admin.from('community_prefs').select('spoiler_protection').eq('user_id', user.id).maybeSingle(),
+            'community settings',
+          ),
+        ]).then(([posts, verdicts, reactions, settings]) => ({ posts, verdicts, reactions, settings }))
+      : null;
     const file = {
       exportedAt: new Date().toISOString(),
       account: {
@@ -67,6 +100,7 @@ export async function GET(request: Request) {
         addedAt: d.created_at,
       })),
       assistantMessagesPerDay: assistant,
+      community,
     };
     const day = new Date().toISOString().slice(0, 10);
     return new Response(JSON.stringify(file, null, 2), {

@@ -562,8 +562,19 @@ export default function WatchApp({
     }
     setPlanPreview(proposed);
   };
+  // After an episode: a shortcut to its discussion ("Donne ton avis").
+  const takeAction = (m: Media, episode: number) => {
+    const work = refFromMedia(m);
+    if (!work || !auth.user) return undefined;
+    const ref = m.kind === 'anime' && episode > 0 ? { ...work, episode } : work;
+    return { label: t.community.giveYourTake, onClick: () => openDiscussion(ref) };
+  };
   const finish = async (s: Session) => {
-    if (await commit(completeSession(state, s.id))) toast.success(t.toasts.sessionDone);
+    const m = state.media.find((x) => x.id === s.mediaId);
+    if (await commit(completeSession(state, s.id)))
+      toast.success(t.toasts.sessionDone, {
+        action: m ? takeAction(m, Math.max(m.progress, s.to)) : undefined,
+      });
   };
   const advance = async (m: Media) => {
     const progress = m.total ? Math.min(m.total, m.progress + 1) : m.progress + 1;
@@ -582,7 +593,10 @@ export default function WatchApp({
         s.mediaId === m.id && s.to <= progress ? { ...s, done: true } : s,
       ),
     };
-    if (await commit(next)) toast.success(m.kind === 'manga' ? t.toasts.chapterLogged : t.toasts.logged);
+    if (await commit(next))
+      toast.success(m.kind === 'manga' ? t.toasts.chapterLogged : t.toasts.logged, {
+        action: takeAction(m, progress),
+      });
   };
   const canAct = !!auth.user && loaded && !saving;
   // From the list: the anime's last watched episode, otherwise the whole work.
@@ -728,7 +742,7 @@ export default function WatchApp({
     </article>
   );
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-view={view}>
       <Toaster theme="dark" position="bottom-right" richColors />
       <SiteHeader
         view={view}
@@ -777,28 +791,32 @@ export default function WatchApp({
             </div>
           </div>
         )}
-        {view !== 'home' && view !== 'assistant' && view !== 'discussion' && view !== 'moderation' && (
-          <div className="page-heading">
-            <div>
-              <p className="eyebrow">{t.app.eyebrow}</p>
-              <h1>{t.headings[view]}</h1>
-              <p>
-                {view === 'planning' ? t.subheadings.planning(state.settings.budget) : t.subheadings[view]}
-              </p>
+        {view !== 'home' &&
+          view !== 'assistant' &&
+          view !== 'discussion' &&
+          view !== 'moderation' &&
+          view !== 'community' && (
+            <div className="page-heading">
+              <div>
+                <p className="eyebrow">{t.app.eyebrow}</p>
+                <h1>{t.headings[view]}</h1>
+                <p>
+                  {view === 'planning' ? t.subheadings.planning(state.settings.budget) : t.subheadings[view]}
+                </p>
+              </div>
+              {view === 'collection' ? (
+                <button className="primary" disabled={!canAct} onClick={() => navigate('catalog')}>
+                  <Plus size={18} />
+                  {t.app.browseCatalog}
+                </button>
+              ) : view === 'planning' ? (
+                <button className="primary" disabled={!canAct} onClick={generate}>
+                  <CalendarDays size={17} />
+                  {t.app.prepareWeek}
+                </button>
+              ) : null}
             </div>
-            {view === 'collection' ? (
-              <button className="primary" disabled={!canAct} onClick={() => navigate('catalog')}>
-                <Plus size={18} />
-                {t.app.browseCatalog}
-              </button>
-            ) : view === 'planning' ? (
-              <button className="primary" disabled={!canAct} onClick={generate}>
-                <CalendarDays size={17} />
-                {t.app.prepareWeek}
-              </button>
-            ) : null}
-          </div>
-        )}
+          )}
         {view === 'catalog' && authChecked && !auth.user && (
           <p className="notice">
             {t.app.catalogNotice}{' '}
@@ -1098,6 +1116,8 @@ export default function WatchApp({
                   key={auth.user?.id || 'guest'}
                   collection={state.media}
                   signedIn={!!auth.user}
+                  canAdd={canAct}
+                  onAdd={(item) => addCatalog(item, false)}
                   onOpen={openDiscussion}
                   onSignIn={() => openAuth('login')}
                   onBrowse={() => navigate('catalog')}

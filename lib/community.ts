@@ -11,7 +11,13 @@ export type TargetRef = {
   season: number | null;
   episode: number | null;
 };
-export type Target = TargetRef & { id: string; title: string; poster: string };
+export type Target = TargetRef & {
+  id: string;
+  title: string;
+  poster: string;
+  backdrop: string;
+  year: string;
+};
 export type Spoiler = 'none' | 'episode' | 'later';
 export type Reaction = 'heart' | 'fire' | 'laugh' | 'cry' | 'mind';
 export const REACTIONS: { key: Reaction; emoji: string }[] = [
@@ -21,9 +27,20 @@ export const REACTIONS: { key: Reaction; emoji: string }[] = [
   { key: 'cry', emoji: '😭' },
   { key: 'mind', emoji: '🤯' },
 ];
+/** "Ta réaction" to an episode or a work: one per member. */
+export type TargetReaction = 'fire' | 'cry' | 'mind' | 'heart';
+export const TARGET_REACTIONS: { key: TargetReaction; emoji: string }[] = [
+  { key: 'fire', emoji: '🔥' },
+  { key: 'cry', emoji: '😭' },
+  { key: 'mind', emoji: '🤯' },
+  { key: 'heart', emoji: '❤️' },
+];
+export const RECO_MAX = 500;
 export type Debrief = {
   id: string;
   parentId: string | null;
+  /** A débrief, or a recommendation of a whole work. */
+  kind: 'debrief' | 'reco';
   username: string | null;
   mine: boolean;
   body: string;
@@ -45,7 +62,26 @@ export type Summary = {
   average: number | null;
   histogram: number[] | null;
   debriefs: number;
+  targetReactions: Partial<Record<TargetReaction, number>>;
+  myTargetReaction: TargetReaction | null;
 };
+/** A post in the Communauté feed. A spoiler's body is null until the member may read it. */
+export type FeedItem = Omit<Debrief, 'body' | 'parentId' | 'replies'> & {
+  body: string | null;
+  replyCount: number;
+  inList: boolean;
+  target: TargetRef & { title: string; poster: string; backdrop: string; year: string };
+};
+/** The most used reactions first, for a compact "🔥😭🤯 12". */
+export function topReactions(counts: Partial<Record<Reaction, number>>, max = 3) {
+  const used = REACTIONS.filter((r) => (counts[r.key] || 0) > 0).sort(
+    (a, b) => (counts[b.key] || 0) - (counts[a.key] || 0),
+  );
+  return {
+    emojis: used.slice(0, max).map((r) => r.emoji),
+    total: used.reduce((n, r) => n + (counts[r.key] || 0), 0),
+  };
+}
 export type SeasonInfo = { season: number; episodes: number };
 /** What the episode picker can offer for a work. */
 export type EpisodeGuide =
@@ -157,12 +193,21 @@ export function viewerSeen(ref: TargetRef, collection: Media[], seasons?: Season
   return null;
 }
 
-/** A spoiler is hidden unless it only spoils what the viewer has already seen. */
-export function spoilerHidden(spoiler: Spoiler, seen: boolean | null): boolean {
-  if (spoiler === 'none') return false;
+/**
+ * A spoiler is hidden unless it only spoils what the viewer has already seen, or the viewer
+ * turned spoiler protection off.
+ */
+export function spoilerHidden(spoiler: Spoiler, seen: boolean | null, protection = true): boolean {
+  if (spoiler === 'none' || !protection) return false;
   if (spoiler === 'episode') return seen !== true;
   return true;
 }
+
+/** Whether a title of the catalog is already in the collection. */
+export const inCollection = (ref: Pick<TargetRef, 'kind' | 'source' | 'sourceId'>, collection: Media[]) =>
+  collection.some(
+    (m) => m.kind === ref.kind && m.catalog?.source === ref.source && m.catalog.id === ref.sourceId,
+  );
 
 /** Same deterministic color for a username everywhere. */
 export function usernameHue(username: string): number {

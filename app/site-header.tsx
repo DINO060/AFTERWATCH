@@ -96,7 +96,7 @@ export function SiteHeader({
           {links.map((link) => (
             <button
               key={link.id}
-              className={`${view === link.id ? 'active' : ''}${link.id === 'home' ? ' nav-home' : ''}`}
+              className={`${view === link.id || (link.id === 'community' && view === 'discussion') ? 'active' : ''}${link.id === 'home' ? ' nav-home' : ''}`}
               aria-current={view === link.id ? 'page' : undefined}
               onClick={() => onNavigate(link.id)}
             >
@@ -321,7 +321,7 @@ export function BottomNav({ view, onNavigate }: { view: View; onNavigate: (view:
     { id: 'catalog' as const, icon: Compass, label: t.nav.catalog },
     { id: 'community' as const, icon: MessageCircle, label: t.shell.community },
     { id: 'collection' as const, icon: Layers3, label: t.shell.myList },
-    { id: 'planning' as const, icon: CalendarDays, label: t.nav.planning },
+    { id: 'planning' as const, icon: CalendarDays, label: t.shell.planning },
   ];
   return (
     <nav className="bottom-nav" aria-label={t.shell.mainNav}>

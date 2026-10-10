@@ -1,22 +1,22 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import {
   ArrowLeft,
+  ArrowUp,
   Check,
+  ChevronDown,
+  Eye,
   EyeOff,
   Flag,
-  LoaderCircle,
   Lock,
   MoreHorizontal,
   PencilLine,
-  Plus,
+  Send,
   Share2,
   Trash2,
-  Tv,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -30,14 +30,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
-  REACTIONS,
+  TARGET_REACTIONS,
   refPath,
   spoilerHidden,
-  usernameHue,
+  topReactions,
   viewerSeen,
   workOf,
   type Debrief,
@@ -46,9 +47,23 @@ import {
   type Spoiler,
   type Summary,
   type Target,
+  type TargetReaction,
   type TargetRef,
 } from '@/lib/community';
 import type { Media } from '@/lib/watch';
+import {
+  Avatar,
+  Loading,
+  ReportDialog,
+  ScoreBar,
+  SpoilerVeil,
+  UsernameDialog,
+  api,
+  post,
+  problem,
+  refQuery,
+  useAgo,
+} from './community-ui';
 import { useI18n } from './i18n-provider';
 
 type Thread = { comments: Debrief[]; total: number; hasMore: boolean };
@@ -58,75 +73,11 @@ type Draft = {
   parent?: Debrief;
   comment?: Debrief;
   body: string;
-  level: Spoiler | null;
-  attach: boolean;
+  level: Spoiler;
 };
 const MAX = 2000;
-
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, { cache: 'no-store', ...init });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || 'failed');
-  return data as T;
-}
-const post = <T,>(payload: object) =>
-  api<T>('/api/community', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-const refQuery = (ref: TargetRef) =>
-  new URLSearchParams({
-    kind: ref.kind,
-    source: ref.source,
-    id: ref.sourceId,
-    ...(ref.season !== null ? { season: String(ref.season) } : {}),
-    ...(ref.episode !== null ? { episode: String(ref.episode) } : {}),
-  }).toString();
-
-export function useAgo() {
-  const { locale } = useI18n();
-  return (iso: string) => {
-    const diff = (Date.parse(iso) - Date.now()) / 1000;
-    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-    const abs = Math.abs(diff);
-    if (abs < 60) return rtf.format(0, 'second');
-    if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
-    if (abs < 86400) return rtf.format(Math.round(diff / 3600), 'hour');
-    if (abs < 7 * 86400) return rtf.format(Math.round(diff / 86400), 'day');
-    return new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
-  };
-}
-
-export function Poster({ src, className }: { src: string; className: string }) {
-  const [broken, setBroken] = useState(false);
-  return src && !broken ? (
-    <img
-      className={className}
-      src={src}
-      alt=""
-      referrerPolicy="no-referrer"
-      onError={() => setBroken(true)}
-    />
-  ) : (
-    <span className={`${className} dx-poster-empty`} aria-hidden>
-      <Tv size={20} />
-    </span>
-  );
-}
-
-export function Avatar({ name, small }: { name: string | null; small?: boolean }) {
-  const hue = name ? usernameHue(name) : 0;
-  return (
-    <span
-      className={`dx-avatar${small ? ' small' : ''}`}
-      aria-hidden
-      style={{ background: name ? `hsl(${hue} 38% 34%)` : 'var(--secondary)' }}
-    >
-      {name ? name[0].toUpperCase() : '?'}
-    </span>
-  );
-}
+const POLL = 15000;
+const blank: Draft = { mode: 'new', body: '', level: 'none' };
 
 export default function DiscussionView({
   refTarget,
@@ -143,43 +94,51 @@ export default function DiscussionView({
   onBack: () => void;
   onSignIn: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const c = t.community;
   const ago = useAgo();
   const [target, setTarget] = useState<Target | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [protection, setProtection] = useState(true);
   const [guide, setGuide] = useState<EpisodeGuide | null>(null);
   const [activity, setActivity] = useState<Activity>([]);
   const [thread, setThread] = useState<Thread | null>(null);
-  const [sort, setSort] = useState<'top' | 'recent'>('recent');
+  const [sort, setSort] = useState<'top' | 'recent'>('top');
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [showAverage, setShowAverage] = useState(false);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [openReplies, setOpenReplies] = useState<Record<string, boolean>>({});
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [composerOpen, setComposerOpen] = useState(false);
+  const [draft, setDraft] = useState<Draft>(blank);
+  const [sending, setSending] = useState(false);
+  const [askName, setAskName] = useState(false);
   const [toDelete, setToDelete] = useState<Debrief | null>(null);
-  const [toReport, setToReport] = useState<Debrief | null>(null);
+  const [toReport, setToReport] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null | undefined>(undefined);
+  const [fresh, setFresh] = useState(0);
+  // Messages counted when the list was last loaded: the difference is "N nouveaux messages".
+  const baseline = useRef(0);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const listHead = useRef<HTMLDivElement>(null);
   const refKey = refPath(refTarget);
   const workKey = refPath(workOf(refTarget));
 
-  // The discussion and its verdicts.
+  // The discussion, its scores, and the member's spoiler setting.
   useEffect(() => {
     if (!signedIn) return;
     let live = true;
     // Each discussion mounts its own view (see its key in watch-app), so there is nothing to reset here.
-    api<{ target: Target; summary: Summary }>(`/api/community?op=target&${refQuery(refTarget)}`)
+    api<{ target: Target; summary: Summary; prefs: { spoilerProtection: boolean } }>(
+      `/api/community?op=target&${refQuery(refTarget)}`,
+    )
       .then((data) => {
         if (!live) return;
         setTarget(data.target);
         setSummary(data.summary);
+        setProtection(data.prefs.spoilerProtection);
+        baseline.current = data.summary.debriefs;
       })
-      .catch(
-        (e) => live && setError(e instanceof Error && e.message !== 'failed' ? e.message : c.loadFailed),
-      );
+      .catch((e) => live && setError(problem(e, c.loadFailed)));
     return () => {
       live = false;
     };
@@ -187,7 +146,7 @@ export default function DiscussionView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refKey, signedIn, retry]);
 
-  // The episode picker, once per work.
+  // The episode strip, once per work.
   useEffect(() => {
     if (!signedIn) return;
     let live = true;
@@ -225,6 +184,22 @@ export default function DiscussionView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target?.id, sort, loadThread]);
 
+  // New messages from others, every 15 seconds while the page is on screen.
+  useEffect(() => {
+    if (!target) return;
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const next = await api<Summary>(`/api/community?op=summary&target=${target.id}`);
+        setSummary(next);
+        setFresh(Math.max(0, next.debriefs - baseline.current));
+      } catch {
+        // Offline for a moment: the next round tries again.
+      }
+    }, POLL);
+    return () => window.clearInterval(timer);
+  }, [target]);
+
   useEffect(() => {
     if (!signedIn) return;
     fetch('/api/profile', { cache: 'no-store' })
@@ -244,12 +219,21 @@ export default function DiscussionView({
 
   if (!signedIn)
     return (
-      <section className="panel dx-blocked">
-        <p>{c.signIn}</p>
-        <button className="primary" onClick={onSignIn}>
-          {t.nav.signIn}
-        </button>
-      </section>
+      <div className="dx">
+        <div className="dx-plain-top">
+          <button className="dx-round" aria-label={c.back} onClick={onBack}>
+            <ArrowLeft size={20} />
+          </button>
+          <strong>{c.discussion}</strong>
+          <span className="dx-round-spacer" />
+        </div>
+        <section className="panel dx-blocked">
+          <p>{c.signIn}</p>
+          <button className="primary" onClick={onSignIn}>
+            {t.nav.signIn}
+          </button>
+        </section>
+      </div>
     );
 
   const share = async () => {
@@ -273,7 +257,29 @@ export default function DiscussionView({
       setSummary(await post<Summary>({ op: 'rate', target: target.id, score }));
     } catch (e) {
       setSummary(previous);
-      toast.error(e instanceof Error && e.message !== 'failed' ? e.message : c.actionFailed);
+      toast.error(problem(e, c.actionFailed));
+    }
+  };
+
+  const reactTarget = async (reaction: TargetReaction) => {
+    if (!target || !summary) return;
+    const previous = summary;
+    const counts = { ...summary.targetReactions };
+    const mine = summary.myTargetReaction === reaction ? null : reaction;
+    if (summary.myTargetReaction)
+      counts[summary.myTargetReaction] = (counts[summary.myTargetReaction] || 1) - 1;
+    if (mine) counts[mine] = (counts[mine] || 0) + 1;
+    setSummary({ ...summary, targetReactions: counts, myTargetReaction: mine });
+    try {
+      const result = await post<Pick<Summary, 'targetReactions' | 'myTargetReaction'>>({
+        op: 'reactTarget',
+        target: target.id,
+        reaction,
+      });
+      setSummary((s) => (s ? { ...s, ...result } : s));
+    } catch (e) {
+      setSummary(previous);
+      toast.error(problem(e, c.actionFailed));
     }
   };
 
@@ -297,13 +303,14 @@ export default function DiscussionView({
       return { ...current, comments };
     });
 
-  const react = async (d: Debrief, reaction: Reaction) => {
+  // The heart: tapping again removes it; it replaces any other reaction given before.
+  const like = async (d: Debrief) => {
     const before = { reactions: d.reactions, myReaction: d.myReaction };
+    const reaction: Reaction = 'heart';
     const counts = { ...d.reactions };
-    let mine: Reaction | null = reaction;
     if (d.myReaction) counts[d.myReaction] = (counts[d.myReaction] || 1) - 1;
-    if (d.myReaction === reaction) mine = null;
-    else counts[reaction] = (counts[reaction] || 0) + 1;
+    const mine = d.myReaction === reaction ? null : reaction;
+    if (mine) counts[mine] = (counts[mine] || 0) + 1;
     for (const key of Object.keys(counts) as Reaction[]) if (!counts[key]) delete counts[key];
     patchComment(d.id, (x) => ({ ...x, reactions: counts, myReaction: mine }));
     try {
@@ -315,20 +322,17 @@ export default function DiscussionView({
       patchComment(d.id, (x) => ({ ...x, ...result }));
     } catch (e) {
       patchComment(d.id, (x) => ({ ...x, ...before }));
-      toast.error(e instanceof Error && e.message !== 'failed' ? e.message : c.actionFailed);
+      toast.error(problem(e, c.actionFailed));
     }
   };
 
-  const openComposer = (next: Draft) => {
-    setDraft(next);
-    setComposerOpen(true);
+  const focusComposer = () => window.setTimeout(() => field.current?.focus(), 30);
+  const resizeField = () => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
   };
-  const startNew = (prompt = '') =>
-    openComposer(
-      draft?.mode === 'new' && !prompt
-        ? draft
-        : { mode: 'new', body: prompt, level: null, attach: summary?.myScore != null },
-    );
 
   const published = (d: Debrief, mode: Draft['mode'], parent?: Debrief) => {
     if (mode === 'edit')
@@ -351,6 +355,59 @@ export default function DiscussionView({
           : current,
       );
       setSummary((s) => (s ? { ...s, debriefs: s.debriefs + 1 } : s));
+      baseline.current += 1;
+      listHead.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const send = async (named = false) => {
+    if (!target || sending) return;
+    const text = draft.body.trim();
+    if (!text || text.length > MAX) return;
+    if (username === null && !named) {
+      setAskName(true);
+      return;
+    }
+    setSending(true);
+    try {
+      const d =
+        draft.mode === 'edit'
+          ? await post<Debrief>({
+              op: 'edit',
+              comment: draft.comment!.id,
+              body: text,
+              spoiler: draft.level,
+              showRating: draft.comment!.showRating,
+            })
+          : await post<Debrief>({
+              op: 'comment',
+              target: target.id,
+              parent: draft.mode === 'reply' ? draft.parent!.id : null,
+              body: text,
+              spoiler: draft.level,
+              // A new message shows the author's score for this episode or work, when they gave one.
+              showRating: draft.mode === 'new' && summary?.myScore != null,
+            });
+      published(d, draft.mode, draft.parent);
+      setDraft(blank);
+      if (field.current) field.current.style.height = '';
+      if (draft.mode === 'edit') toast.success(c.published);
+    } catch (e) {
+      // The draft stays: nothing typed is lost.
+      toast.error(problem(e, c.actionFailed));
+    } finally {
+      setSending(false);
+    }
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    send();
+  };
+  const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter sends on a computer; on a phone it adds a line, and the button sends.
+    if (event.key === 'Enter' && !event.shiftKey && window.matchMedia('(pointer: fine)').matches) {
+      event.preventDefault();
+      send();
     }
   };
 
@@ -364,10 +421,13 @@ export default function DiscussionView({
           ? { ...x, deleted: true, body: '', rating: null, reactions: {}, myReaction: null }
           : null,
       );
-      if (!d.parentId) setSummary((s) => (s ? { ...s, debriefs: Math.max(0, s.debriefs - 1) } : s));
+      if (!d.parentId) {
+        setSummary((s) => (s ? { ...s, debriefs: Math.max(0, s.debriefs - 1) } : s));
+        baseline.current = Math.max(0, baseline.current - 1);
+      }
       setToDelete(null);
     } catch (e) {
-      toast.error(e instanceof Error && e.message !== 'failed' ? e.message : c.actionFailed);
+      toast.error(problem(e, c.actionFailed));
     }
   };
 
@@ -390,295 +450,451 @@ export default function DiscussionView({
     }
   };
 
-  const debriefCard = (d: Debrief, reply = false) => {
-    const veiled = !d.deleted && spoilerHidden(d.spoiler, seen) && !revealed[d.id];
-    const shown = !d.deleted && d.spoiler !== 'none' && !veiled;
+  // "↑ N nouveaux messages": the newest first, from the top of the discussion.
+  const showFresh = async () => {
+    if (!target) return;
+    try {
+      const [latest, next] = await Promise.all([
+        loadThread(target.id, 'recent', 0),
+        api<Summary>(`/api/community?op=summary&target=${target.id}`),
+      ]);
+      if (sort !== 'recent') setSort('recent');
+      setThread(latest);
+      setSummary(next);
+      baseline.current = next.debriefs;
+      setFresh(0);
+      listHead.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch {
+      toast.error(c.actionFailed);
+    }
+  };
+
+  const veilReason = (d: Debrief) =>
+    d.spoiler === 'later'
+      ? c.veiledLater
+      : seen === false
+        ? refTarget.episode === null
+          ? t.community.hub.notFinished
+          : t.community.hub.notSeenEpisode
+        : t.community.hub.maybeNotSeen;
+
+  const postCard = (d: Debrief, reply = false) => {
+    const hidden = !d.deleted && spoilerHidden(d.spoiler, seen, protection) && !revealed[d.id];
     const label = d.spoiler === 'later' ? c.spoilerLater : c.spoilerOf(what);
-    const used = REACTIONS.filter((r) => d.reactions[r.key] || d.myReaction === r.key);
+    const { emojis, total } = topReactions(d.reactions);
     return (
-      <article className={reply ? 'dx-reply' : 'dx-debrief'} key={d.id}>
-        <header className="dx-debrief-head">
-          <Avatar name={d.username} small={reply} />
-          <div className="dx-who">
+      <article className={`dx-post${reply ? ' reply' : ''}`} key={d.id}>
+        <Avatar name={d.username} round size={reply ? 'sm' : 'md'} />
+        <div className="dx-post-main">
+          <header className="dx-post-head">
             <strong>{d.username ?? c.deletedAccount}</strong>
-            <span>
+            {d.kind === 'reco' && <span className="dx-tag">{c.recoTag}</span>}
+            <span className="dx-time">
               {ago(d.createdAt)}
               {d.edited && !d.deleted ? ` · ${c.edited}` : ''}
             </span>
-          </div>
-          {d.rating !== null && !reply && (
-            <span
-              className="dx-badge"
-              title={c.authorVerdict(d.rating)}
-              aria-label={c.authorVerdict(d.rating)}
-            >
-              {d.rating}
-            </span>
-          )}
-          {!d.deleted && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="dx-icon" aria-label={c.actions}>
-                  <MoreHorizontal size={18} />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {d.mine ? (
-                  <>
-                    <DropdownMenuItem
-                      onClick={() =>
-                        openComposer({
-                          mode: 'edit',
-                          comment: d,
-                          body: d.body,
-                          level: d.spoiler,
-                          attach: d.showRating,
-                        })
-                      }
-                    >
-                      <PencilLine />
-                      {c.edit}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="danger" onClick={() => setToDelete(d)}>
-                      <Trash2 />
-                      {c.remove}
-                    </DropdownMenuItem>
-                  </>
-                ) : (
-                  <DropdownMenuItem onClick={() => setToReport(d)}>
-                    <Flag />
-                    {c.report}
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </header>
-
-        {d.deleted ? (
-          <p className="dx-gone">{d.removed ? c.removed : c.deleted}</p>
-        ) : veiled ? (
-          <div className="dx-veil">
-            <div className="dx-veil-lines" aria-hidden>
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="dx-veil-label">
-              <span className="dx-veil-icon" aria-hidden>
-                <EyeOff size={18} />
-              </span>
-              <div>
-                <strong>{label}</strong>
-                <span>{d.spoiler === 'later' ? c.veiledLater : c.veiledEpisode}</span>
-              </div>
-            </div>
-            <button className="dx-veil-btn" onClick={() => setRevealed((r) => ({ ...r, [d.id]: true }))}>
-              {c.reveal}
-            </button>
-          </div>
-        ) : (
-          <>
-            {shown && (
-              <span className="dx-spoiler-tag">
-                {label} · {revealed[d.id] ? c.shownManually : c.shownSeen}
+            {d.rating !== null && !reply && (
+              <span
+                className="dx-badge"
+                title={c.authorVerdict(d.rating)}
+                aria-label={c.authorVerdict(d.rating)}
+              >
+                {d.rating}
               </span>
             )}
-            <p className="dx-body">{d.body}</p>
-            {revealed[d.id] && (
-              <button className="dx-link small" onClick={() => setRevealed((r) => ({ ...r, [d.id]: false }))}>
-                {c.veilAgain}
-              </button>
-            )}
-          </>
-        )}
-
-        {!d.deleted && (
-          <div className="dx-reactions" role="group" aria-label={c.addReaction}>
-            {used.map((r) => {
-              const n = d.reactions[r.key] || 0;
-              const mine = d.myReaction === r.key;
-              return (
-                <button
-                  key={r.key}
-                  className={`dx-reaction${mine ? ' mine' : ''}`}
-                  aria-pressed={mine}
-                  aria-label={`${c.reactionNames[r.key]}, ${n}${mine ? `, ${c.yourReaction}` : ''}`}
-                  onClick={() => react(d, r.key)}
-                >
-                  <span aria-hidden>{r.emoji}</span>
-                  {n > 0 && n}
-                </button>
-              );
-            })}
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className="dx-reaction add" aria-label={c.addReaction}>
-                  <Plus size={15} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="dx-reaction-picker" align="start" sideOffset={6}>
-                {REACTIONS.map((r) => (
-                  <button
-                    key={r.key}
-                    title={c.reactionNames[r.key]}
-                    aria-label={c.reactionNames[r.key]}
-                    aria-pressed={d.myReaction === r.key}
-                    className={d.myReaction === r.key ? 'mine' : ''}
-                    onClick={() => react(d, r.key)}
-                  >
-                    {r.emoji}
-                  </button>
-                ))}
-              </PopoverContent>
-            </Popover>
-          </div>
-        )}
-
-        {!reply && (
-          <div className="dx-thread-actions">
             {!d.deleted && (
-              <button
-                className="dx-link"
-                onClick={() =>
-                  openComposer({ mode: 'reply', parent: d, body: '', level: null, attach: false })
-                }
-              >
-                {c.reply}
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="dx-icon" aria-label={c.actions}>
+                    <MoreHorizontal size={18} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {d.mine ? (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setDraft({ mode: 'edit', comment: d, body: d.body, level: d.spoiler });
+                          focusComposer();
+                        }}
+                      >
+                        <PencilLine />
+                        {c.edit}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="danger" onClick={() => setToDelete(d)}>
+                        <Trash2 />
+                        {c.remove}
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <DropdownMenuItem onClick={() => setToReport(d.id)}>
+                      <Flag />
+                      {c.report}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-            {(d.replyCount || 0) > 0 && (
+          </header>
+
+          {d.deleted ? (
+            <p className="dx-gone">{d.removed ? c.removed : c.deleted}</p>
+          ) : hidden ? (
+            <SpoilerVeil
+              title={label}
+              reason={veilReason(d)}
+              action={c.reveal}
+              onShow={() => setRevealed((r) => ({ ...r, [d.id]: true }))}
+            />
+          ) : (
+            <>
+              {d.spoiler !== 'none' && (
+                <span className="dx-spoiler-tag">
+                  <EyeOff size={12} aria-hidden />
+                  {label}
+                  {revealed[d.id] && (
+                    <button
+                      className="dx-link small"
+                      onClick={() => setRevealed((r) => ({ ...r, [d.id]: false }))}
+                    >
+                      {c.veilAgain}
+                    </button>
+                  )}
+                </span>
+              )}
+              <p className="dx-body">{d.body}</p>
+            </>
+          )}
+
+          {!d.deleted && (
+            <footer className="dx-post-foot">
               <button
-                className="dx-link accent"
-                aria-expanded={!!openReplies[d.id]}
-                onClick={() => setOpenReplies((o) => ({ ...o, [d.id]: !o[d.id] }))}
+                className={`dx-like${d.myReaction ? ' mine' : ''}`}
+                aria-pressed={d.myReaction === 'heart'}
+                aria-label={`${t.community.hub.like}, ${t.community.hub.reactionsAria(total)}`}
+                onClick={() => like(d)}
               >
-                {openReplies[d.id] ? c.hideReplies : c.replies(d.replyCount || 0)}
+                <span aria-hidden>{emojis.length ? emojis.join('') : '❤️'}</span>
+                {total > 0 && total}
               </button>
-            )}
-          </div>
-        )}
-        {!reply && openReplies[d.id] && (d.replies?.length || 0) > 0 && (
-          <div className="dx-replies">{d.replies!.map((r) => debriefCard(r, true))}</div>
-        )}
+              {!reply && (d.replyCount || 0) > 0 && (
+                <button
+                  className="dx-foot-btn"
+                  aria-expanded={!!openReplies[d.id]}
+                  aria-label={openReplies[d.id] ? c.hideReplies : c.replies(d.replyCount || 0)}
+                  onClick={() => setOpenReplies((o) => ({ ...o, [d.id]: !o[d.id] }))}
+                >
+                  <span aria-hidden>💬</span>
+                  {d.replyCount}
+                </button>
+              )}
+              {!reply && (
+                <button
+                  className="dx-foot-btn"
+                  onClick={() => {
+                    setDraft({ mode: 'reply', parent: d, body: '', level: 'none' });
+                    focusComposer();
+                  }}
+                >
+                  {c.reply}
+                </button>
+              )}
+            </footer>
+          )}
+          {!reply && openReplies[d.id] && (d.replies?.length || 0) > 0 && (
+            <div className="dx-replies">{d.replies!.map((r) => postCard(r, true))}</div>
+          )}
+        </div>
       </article>
     );
   };
 
+  const subtitle =
+    refTarget.episode === null
+      ? [t.kinds[refTarget.kind], target?.year].filter(Boolean).join(' · ')
+      : refTarget.kind === 'series'
+        ? c.seasonEpisodeTitle(refTarget.season ?? 0, refTarget.episode)
+        : c.episodeTitle(refTarget.episode);
+  const image = target?.backdrop || target?.poster || '';
+  const levels: Spoiler[] = refTarget.episode === null ? ['none', 'episode'] : ['none', 'episode', 'later'];
+  const levelIcon = (level: Spoiler, size = 14) =>
+    level === 'none' ? (
+      <Eye size={size} />
+    ) : level === 'episode' ? (
+      <EyeOff size={size} />
+    ) : (
+      <Lock size={size} />
+    );
+  const length = draft.body.trim().length;
+
   return (
     <div className="dx">
-      <Hero
-        refTarget={refTarget}
-        target={target}
-        summary={summary}
-        seen={seen === true}
-        onBack={onBack}
-        onShare={share}
-      />
-      {error ? (
-        <div className="notice danger dx-error" role="alert">
-          {error}
-          <button
-            className="ghost-btn small-btn"
-            onClick={() => {
-              setError('');
-              setRetry((n) => n + 1);
-            }}
-          >
-            {t.common.retry}
+      <section className={`dx-hero${target && !target.backdrop ? ' tall' : ''}`}>
+        {image && <img className="dx-hero-img" src={image} alt="" aria-hidden referrerPolicy="no-referrer" />}
+        <div className="dx-hero-shade" aria-hidden />
+        <div className="dx-hero-top">
+          <button className="dx-round" aria-label={c.back} onClick={onBack}>
+            <ArrowLeft size={20} />
+          </button>
+          <strong>{c.discussion}</strong>
+          <button className="dx-round" aria-label={c.share} onClick={share}>
+            <Share2 size={18} />
           </button>
         </div>
-      ) : null}
-      {guide && guide.mode !== 'single' && (
-        <EpisodePicker refTarget={refTarget} guide={guide} activity={activity} onOpen={onOpen} />
-      )}
-
-      {target && summary ? (
-        <>
-          <VerdictCard summary={summary} onRate={rate} />
-          <MembersCard summary={summary} showAnyway={showAverage} onShow={() => setShowAverage(true)} />
-          <div className="dx-section-head">
-            <h2>
-              {c.debriefs} <span>{thread?.total ?? summary.debriefs}</span>
-            </h2>
-            <div className="dx-sort" role="group" hidden={!thread || thread.total === 0}>
-              <button
-                aria-pressed={sort === 'top'}
-                className={sort === 'top' ? 'on' : ''}
-                onClick={() => setSort('top')}
-              >
-                {c.sortTop}
-              </button>
-              <button
-                aria-pressed={sort === 'recent'}
-                className={sort === 'recent' ? 'on' : ''}
-                onClick={() => setSort('recent')}
-              >
-                {c.sortRecent}
-              </button>
-            </div>
+        <div className="dx-hero-bottom">
+          <div className="dx-hero-text">
+            <h1>{target?.title ?? '…'}</h1>
+            {subtitle && <p>{subtitle}</p>}
           </div>
-          {!thread ? (
-            <p className="inline-note dx-loading" role="status">
-              <LoaderCircle size={16} className="loading-icon" />
-            </p>
-          ) : thread.comments.length === 0 ? (
-            <section className="dx-empty">
-              <span>{c.emptyCount}</span>
-              <h3>{c.emptyTitle}</h3>
-              <p>{c.emptyText}</p>
-              <div className="dx-prompts">
-                {c.prompts.map((p) => (
-                  <button key={p} onClick={() => startNew(p.replace(/…$/, '').trimEnd() + ' ')}>
-                    {p}
+          {seen === true && (
+            <span className="dx-seen">
+              <Check size={15} strokeWidth={2.8} aria-hidden />
+              {refTarget.episode === null ? c.seen : c.episodeSeen}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <div className="dx-content">
+        {error ? (
+          <div className="notice danger dx-error" role="alert">
+            {error}
+            <button
+              className="ghost-btn small-btn"
+              onClick={() => {
+                setError('');
+                setRetry((n) => n + 1);
+              }}
+            >
+              {t.common.retry}
+            </button>
+          </div>
+        ) : null}
+        {guide && guide.mode !== 'single' && (
+          <EpisodePicker refTarget={refTarget} guide={guide} activity={activity} onOpen={onOpen} />
+        )}
+
+        {target && summary ? (
+          <>
+            <section className="dx-card dx-rate" aria-label={`${c.yourScore} · ${c.yourReaction}`}>
+              <div className="dx-card-head">
+                <span className="dx-label">{c.yourScore}</span>
+                {summary.myScore !== null && (
+                  <button className="dx-link small" onClick={() => rate(null)}>
+                    {c.removeScore}
                   </button>
-                ))}
+                )}
+              </div>
+              <ScoreBar score={summary.myScore} onScore={rate} label={c.yourScore} />
+              <p className="dx-average">
+                {summary.average !== null ? (
+                  <>
+                    {c
+                      .communityAverage(
+                        Number(summary.average).toLocaleString(locale, {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                        }),
+                        summary.verdicts,
+                      )
+                      .split(/(\d+[.,]\d)/)
+                      .map((part, i) => (i === 1 ? <strong key={i}>{part}</strong> : part))}
+                  </>
+                ) : (
+                  c.fewScores(summary.verdicts)
+                )}
+              </p>
+              <span className="dx-label">{c.yourReaction}</span>
+              <div className="dx-react-grid" role="group" aria-label={c.yourReaction}>
+                {TARGET_REACTIONS.map((r) => {
+                  const n = summary.targetReactions[r.key] || 0;
+                  const mine = summary.myTargetReaction === r.key;
+                  return (
+                    <button
+                      key={r.key}
+                      className={mine ? 'on' : ''}
+                      aria-pressed={mine}
+                      aria-label={`${c.reactionNames[r.key]}, ${n}`}
+                      onClick={() => reactTarget(r.key)}
+                    >
+                      <span className="dx-react-emoji" aria-hidden>
+                        {r.emoji}
+                      </span>
+                      <span className="dx-react-count">{n}</span>
+                    </button>
+                  );
+                })}
               </div>
             </section>
-          ) : (
-            <div className="dx-list">
-              {thread.comments.map((d) => debriefCard(d))}
-              {thread.hasMore && (
-                <button className="dx-more" onClick={loadMore} disabled={loadingMore}>
-                  {loadingMore ? <LoaderCircle size={16} className="loading-icon" /> : c.loadMore}
+
+            <div className="dx-section-head" ref={listHead}>
+              <h2>
+                {c.theDiscussion} <span>{thread?.total ?? summary.debriefs}</span>
+              </h2>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="dx-sort" aria-label={c.sortBy}>
+                    {sort === 'top' ? c.sortTop : c.sortRecent}
+                    <ChevronDown size={15} aria-hidden />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuRadioGroup value={sort} onValueChange={(v) => setSort(v as 'top' | 'recent')}>
+                    <DropdownMenuRadioItem value="top">{c.sortTop}</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="recent">{c.sortRecent}</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            {fresh > 0 && (
+              <button className="dx-fresh" onClick={showFresh}>
+                <ArrowUp size={15} aria-hidden />
+                {c.newMessages(fresh)}
+              </button>
+            )}
+            {!thread ? (
+              <Loading />
+            ) : thread.comments.length === 0 ? (
+              <section className="dx-empty">
+                <h3>{c.emptyTitle}</h3>
+                <p>{c.emptyText}</p>
+                <div className="dx-prompts">
+                  {c.prompts.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => {
+                        setDraft({ ...blank, body: p.replace(/…$/, '').trimEnd() + ' ' });
+                        focusComposer();
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : (
+              <div className="dx-list">
+                {thread.comments.map((d) => postCard(d))}
+                {thread.hasMore && (
+                  <button className="dx-more" onClick={loadMore} disabled={loadingMore}>
+                    {loadingMore ? <Loading /> : c.loadMore}
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          !error && <Loading />
+        )}
+      </div>
+
+      {target && (
+        <form className="dx-composer" onSubmit={submit}>
+          {(draft.mode !== 'new' || length > MAX - 200) && (
+            <div className="dx-composer-context">
+              <span>
+                {draft.mode === 'reply'
+                  ? c.replyingTo(draft.parent?.username ?? c.deletedAccount)
+                  : draft.mode === 'edit'
+                    ? c.editing
+                    : ''}
+                {length > MAX - 200 && (
+                  <em className={length > MAX ? 'over' : ''}>
+                    {' '}
+                    {length.toLocaleString(locale)} / {MAX.toLocaleString(locale)}
+                  </em>
+                )}
+              </span>
+              {draft.mode !== 'new' && (
+                <button
+                  type="button"
+                  className="dx-icon"
+                  aria-label={c.cancelReply}
+                  onClick={() => setDraft(blank)}
+                >
+                  <X size={16} />
                 </button>
               )}
             </div>
           )}
-          {!composerOpen && (
-            <button className="dx-cta" onClick={() => startNew()}>
-              <PencilLine size={18} />
-              {thread && thread.comments.length === 0 ? c.writeFirst : c.write}
+          <div className="dx-composer-row">
+            <span className="dx-composer-avatar">
+              <Avatar name={username || null} round size="sm" />
+            </span>
+            <textarea
+              ref={field}
+              rows={1}
+              value={draft.body}
+              maxLength={MAX + 200}
+              aria-label={draft.mode === 'reply' ? c.replyPlaceholder : c.placeholder}
+              placeholder={draft.mode === 'reply' ? c.replyPlaceholder : c.placeholder}
+              onChange={(e) => {
+                setDraft({ ...draft, body: e.target.value });
+                resizeField();
+              }}
+              onKeyDown={onKey}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={`dx-level${draft.level !== 'none' ? ' on' : ''}`}
+                  aria-label={`${c.spoilerLevel} : ${c.levelChip[draft.level]}`}
+                >
+                  {levelIcon(draft.level)}
+                  <span>{c.levelChip[draft.level]}</span>
+                  <ChevronDown size={13} aria-hidden />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" className="dx-level-menu">
+                <DropdownMenuRadioGroup
+                  value={draft.level}
+                  onValueChange={(v) => setDraft({ ...draft, level: v as Spoiler })}
+                >
+                  {levels.map((level) => (
+                    <DropdownMenuRadioItem key={level} value={level}>
+                      <span className="dx-level-option">
+                        <strong>
+                          {level === 'none'
+                            ? c.levelNone
+                            : level === 'episode'
+                              ? c.levelEpisode(what)
+                              : c.levelLater}
+                        </strong>
+                        <span>
+                          {level === 'none'
+                            ? c.levelNoneHint
+                            : level === 'episode'
+                              ? c.levelEpisodeHint
+                              : c.levelLaterHint}
+                        </span>
+                      </span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button
+              type="submit"
+              className="dx-send"
+              aria-label={draft.mode === 'edit' ? c.saveEdit : c.send}
+              disabled={sending || length === 0 || length > MAX}
+            >
+              {draft.mode === 'edit' ? <Check size={18} /> : <Send size={17} />}
             </button>
-          )}
-        </>
-      ) : (
-        !error && (
-          <p className="inline-note dx-loading" role="status">
-            <LoaderCircle size={16} className="loading-icon" />
-          </p>
-        )
+          </div>
+        </form>
       )}
 
-      {draft && target && (
-        <Composer
-          open={composerOpen}
-          draft={draft}
-          setDraft={setDraft}
-          onClose={() => setComposerOpen(false)}
-          target={target}
-          what={what}
-          myScore={summary?.myScore ?? null}
-          username={username}
-          setUsername={setUsername}
-          onDone={(d) => {
-            published(d, draft.mode, draft.parent);
-            setComposerOpen(false);
-            setDraft(null);
-            toast.success(c.published);
-          }}
-        />
-      )}
+      <UsernameDialog
+        open={askName}
+        onClose={() => setAskName(false)}
+        onDone={(name) => {
+          setUsername(name);
+          setAskName(false);
+          send(true);
+        }}
+      />
       <AlertDialog open={!!toDelete} onOpenChange={(open) => !open && setToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -696,69 +912,6 @@ export default function DiscussionView({
       </AlertDialog>
       <ReportDialog comment={toReport} onClose={() => setToReport(null)} />
     </div>
-  );
-}
-
-function Hero({
-  refTarget,
-  target,
-  summary,
-  seen,
-  onBack,
-  onShare,
-}: {
-  refTarget: TargetRef;
-  target: Target | null;
-  summary: Summary | null;
-  seen: boolean;
-  onBack: () => void;
-  onShare: () => void;
-}) {
-  const { t } = useI18n();
-  const c = t.community;
-  const poster = target?.poster || '';
-  return (
-    <section className="dx-hero">
-      {poster && <img className="dx-hero-bg" src={poster} alt="" aria-hidden referrerPolicy="no-referrer" />}
-      <div className="dx-hero-shade" aria-hidden />
-      <div className="dx-hero-top">
-        <button className="dx-round" aria-label={c.back} onClick={onBack}>
-          <ArrowLeft size={20} />
-        </button>
-        <button className="dx-round" aria-label={c.share} onClick={onShare}>
-          <Share2 size={18} />
-        </button>
-      </div>
-      <div className="dx-hero-main">
-        <Poster src={poster} className="dx-hero-poster" />
-        <div className="dx-hero-text">
-          <p className="dx-eyebrow">
-            {refTarget.episode === null
-              ? t.kinds[refTarget.kind]
-              : `${target?.title ?? '…'} · ${t.kinds[refTarget.kind]}`}
-          </p>
-          {refTarget.episode === null ? (
-            <h1 className="dx-work-title">{target?.title ?? '…'}</h1>
-          ) : (
-            <>
-              <p className="dx-episode-label">
-                {refTarget.kind === 'series' ? c.seasonEpisode(refTarget.season ?? 0) : c.episode}
-              </p>
-              <h1 className="dx-episode-number">{refTarget.episode}</h1>
-            </>
-          )}
-        </div>
-      </div>
-      <div className="dx-hero-meta">
-        {seen && (
-          <span className="dx-seen">
-            <Check size={14} aria-hidden />
-            {c.seen}
-          </span>
-        )}
-        {summary && <span>{c.counts(summary.debriefs, summary.verdicts)}</span>}
-      </div>
-    </section>
   );
 }
 
@@ -830,7 +983,7 @@ function EpisodePicker({
 
   return (
     <div className="dx-picker">
-      {guide.mode === 'seasons' && guide.seasons.length > 0 && (
+      {guide.mode === 'seasons' && guide.seasons.length > 1 && (
         <div className="dx-strip" role="group" aria-label={c.seasonNumber}>
           {guide.seasons.map((s) => (
             <button
@@ -885,374 +1038,5 @@ function EpisodePicker({
         </form>
       )}
     </div>
-  );
-}
-
-function VerdictCard({ summary, onRate }: { summary: Summary; onRate: (score: number | null) => void }) {
-  const { t } = useI18n();
-  const c = t.community;
-  const me = summary.myScore;
-  return (
-    <section className="dx-card" aria-label={c.yourVerdict}>
-      <div className="dx-card-head">
-        <span className="dx-kicker">{c.yourVerdict}</span>
-        {me !== null && (
-          <button className="dx-link small" onClick={() => onRate(null)}>
-            {c.removeVerdict}
-          </button>
-        )}
-      </div>
-      <div className="dx-verdict">
-        <span className="dx-verdict-score">{me ?? '?'}</span>
-        <span className="dx-verdict-word">{me ? c.verdictWords[me - 1] : c.touchScore}</span>
-      </div>
-      <div className="dx-scale" role="group" aria-label={c.yourVerdict}>
-        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-          <button
-            key={n}
-            className={me === n ? 'on' : ''}
-            aria-pressed={me === n}
-            aria-label={c.scoreAria(n, c.verdictWords[n - 1])}
-            onClick={() => onRate(n)}
-          >
-            {n}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function MembersCard({
-  summary,
-  showAnyway,
-  onShow,
-}: {
-  summary: Summary;
-  showAnyway: boolean;
-  onShow: () => void;
-}) {
-  const { t, locale } = useI18n();
-  const c = t.community;
-  const enough = summary.average !== null && summary.histogram;
-  const visible = enough && (summary.myScore !== null || showAnyway);
-  const peak = Math.max(1, ...(summary.histogram || [1]));
-  return (
-    <section className="dx-card" aria-label={c.membersVerdict}>
-      <span className="dx-kicker">{c.membersVerdict}</span>
-      {!enough ? (
-        <p className="dx-muted">{c.notEnough(summary.verdicts)}</p>
-      ) : !visible ? (
-        <div className="dx-hidden-average">
-          <div className="dx-bars blurred" aria-hidden>
-            {[10, 8, 14, 22, 30, 46, 70, 92, 80, 60].map((h, i) => (
-              <span key={i} style={{ height: `${h}%` }} />
-            ))}
-          </div>
-          <div className="dx-hidden-text">
-            <p>{c.rateFirst(summary.verdicts)}</p>
-            <button className="dx-link" onClick={onShow}>
-              {c.seeWithout}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="dx-average">
-            <strong>
-              {Number(summary.average).toLocaleString(locale, {
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 1,
-              })}
-            </strong>
-            <span>{c.verdictCount(summary.verdicts)}</span>
-          </div>
-          <div className="dx-bars" aria-hidden>
-            {summary.histogram!.map((n, i) => (
-              <span
-                key={i}
-                className={summary.myScore === i + 1 ? 'mine' : ''}
-                style={{ height: `${Math.max(4, Math.round((n / peak) * 100))}%` }}
-              >
-                {summary.myScore === i + 1 && <em>{c.you}</em>}
-              </span>
-            ))}
-          </div>
-          <div className="dx-axis" aria-hidden>
-            {Array.from({ length: 10 }, (_, i) => (
-              <span key={i}>{i + 1}</span>
-            ))}
-          </div>
-        </>
-      )}
-    </section>
-  );
-}
-
-function Composer({
-  open,
-  draft,
-  setDraft,
-  onClose,
-  target,
-  what,
-  myScore,
-  username,
-  setUsername,
-  onDone,
-}: {
-  open: boolean;
-  draft: Draft;
-  setDraft: (d: Draft) => void;
-  onClose: () => void;
-  target: Target;
-  what: string;
-  myScore: number | null;
-  username: string | null | undefined;
-  setUsername: (u: string) => void;
-  onDone: (d: Debrief) => void;
-}) {
-  const { t } = useI18n();
-  const c = t.community;
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [name, setName] = useState('');
-  const field = useRef<HTMLTextAreaElement>(null);
-  const n = draft.body.trim().length;
-  const tooLong = draft.body.trim().length > MAX;
-  const levels: Spoiler[] = target.episode === null ? ['none', 'episode'] : ['none', 'episode', 'later'];
-  const cant = busy || !draft.level || n === 0 || tooLong;
-  const title = draft.mode === 'edit' ? c.editTitle : draft.mode === 'reply' ? c.replyTitle : c.composerTitle;
-  const where =
-    target.episode === null
-      ? target.title
-      : `${target.title} · ${target.season !== null ? `${c.seasonShort(target.season)} · ` : ''}${c.episodeShort(target.episode)}`;
-
-  const chooseName = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError('');
-    try {
-      const data = await api<{ username: string }>('/api/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: name }),
-      });
-      setUsername(data.username);
-    } catch (e) {
-      setError(e instanceof Error && e.message !== 'failed' ? e.message : c.actionFailed);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const publish = async () => {
-    if (cant) return;
-    setBusy(true);
-    setError('');
-    try {
-      const d =
-        draft.mode === 'edit'
-          ? await post<Debrief>({
-              op: 'edit',
-              comment: draft.comment!.id,
-              body: draft.body,
-              spoiler: draft.level,
-              showRating: draft.attach && myScore !== null,
-            })
-          : await post<Debrief>({
-              op: 'comment',
-              target: target.id,
-              parent: draft.mode === 'reply' ? draft.parent!.id : null,
-              body: draft.body,
-              spoiler: draft.level,
-              showRating: draft.mode === 'new' && draft.attach && myScore !== null,
-            });
-      onDone(d);
-    } catch (e) {
-      // The draft stays: nothing typed is lost.
-      setError(e instanceof Error && e.message !== 'failed' ? e.message : c.actionFailed);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => !next && !busy && onClose()}>
-      <DialogContent className="dx-composer" showCloseButton={false}>
-        <header className="dx-composer-head">
-          <button className="dx-round" aria-label={c.closeComposer} onClick={onClose} disabled={busy}>
-            <X size={20} />
-          </button>
-          <div>
-            <DialogTitle>{title}</DialogTitle>
-            <DialogDescription>{where}</DialogDescription>
-          </div>
-          <span className="dx-round-spacer" />
-        </header>
-
-        {username === null ? (
-          <form className="dx-username-gate" onSubmit={chooseName}>
-            <p>{c.needUsername}</p>
-            <label className="field">
-              <span>{c.usernameLabel}</span>
-              <span className="username-input">
-                <span aria-hidden>@</span>
-                <input
-                  value={name}
-                  maxLength={20}
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  onChange={(e) => setName(e.target.value.toLowerCase())}
-                />
-              </span>
-            </label>
-            <p className="form-hint">{t.account.usernameHint}</p>
-            {error && (
-              <p className="notice danger" role="alert">
-                {error}
-              </p>
-            )}
-            <button className="primary" type="submit" disabled={busy || name.trim().length < 3}>
-              {busy ? <LoaderCircle size={16} className="loading-icon" /> : <Check size={16} />}
-              {c.usernameSave}
-            </button>
-          </form>
-        ) : (
-          <div className="dx-composer-body">
-            {draft.mode !== 'reply' && myScore !== null && (
-              <div className="dx-attach">
-                <span className="dx-badge" aria-hidden>
-                  {myScore}
-                </span>
-                <div>
-                  <strong>{c.attachVerdict}</strong>
-                  <span>{c.attachHint(myScore, c.verdictWords[myScore - 1])}</span>
-                </div>
-                <button
-                  role="switch"
-                  aria-checked={draft.attach}
-                  aria-label={c.attachVerdict}
-                  className={`dx-switch${draft.attach ? ' on' : ''}`}
-                  onClick={() => setDraft({ ...draft, attach: !draft.attach })}
-                >
-                  <span />
-                </button>
-              </div>
-            )}
-            <textarea
-              ref={field}
-              aria-label={title}
-              value={draft.body}
-              maxLength={MAX + 200}
-              placeholder={draft.mode === 'reply' ? c.replyPlaceholder : c.placeholder}
-              onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-            />
-            <div className={`dx-count${tooLong ? ' over' : n > 1800 ? ' near' : ''}`}>{c.count(n)}</div>
-            <p className="dx-kicker">{c.contains}</p>
-            <div className={`dx-levels n${levels.length}`} role="group" aria-label={c.contains}>
-              {levels.map((level) => {
-                const on = draft.level === level;
-                const [label, hint] =
-                  level === 'none'
-                    ? [c.levelNone, c.levelNoneHint]
-                    : level === 'episode'
-                      ? [c.levelEpisode(what), c.levelEpisodeHint]
-                      : [c.levelLater, c.levelLaterHint];
-                return (
-                  <button
-                    key={level}
-                    className={on ? 'on' : ''}
-                    aria-pressed={on}
-                    onClick={() => setDraft({ ...draft, level })}
-                  >
-                    <span className="dx-level-icon" aria-hidden>
-                      {level === 'none' ? (
-                        <Check size={17} />
-                      ) : level === 'episode' ? (
-                        <EyeOff size={17} />
-                      ) : (
-                        <Lock size={17} />
-                      )}
-                    </span>
-                    <strong>{label}</strong>
-                    <span>{hint}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {error && (
-              <p className="notice danger" role="alert">
-                {error}
-              </p>
-            )}
-            <button className="dx-publish" disabled={cant} onClick={publish}>
-              {busy ? (
-                <LoaderCircle size={18} className="loading-icon" />
-              ) : draft.mode === 'edit' ? (
-                c.saveEdit
-              ) : !draft.level ? (
-                c.pickLevel
-              ) : tooLong ? (
-                c.tooLong
-              ) : (
-                c.publish[draft.level]
-              )}
-            </button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ReportDialog({ comment, onClose }: { comment: Debrief | null; onClose: () => void }) {
-  const { t } = useI18n();
-  const c = t.community;
-  const [reason, setReason] = useState<keyof typeof c.reasons | null>(null);
-  const [details, setDetails] = useState('');
-  const [busy, setBusy] = useState(false);
-  const send = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!comment || !reason || busy) return;
-    setBusy(true);
-    try {
-      await post({ op: 'report', comment: comment.id, reason, details: details.trim() });
-      toast.success(c.reportThanks);
-      setReason(null);
-      setDetails('');
-      onClose();
-    } catch (e) {
-      toast.error(e instanceof Error && e.message !== 'failed' ? e.message : c.actionFailed);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Dialog open={!!comment} onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="dx-report">
-        <DialogTitle>{c.reportTitle}</DialogTitle>
-        <DialogDescription>{c.reportIntro}</DialogDescription>
-        <form onSubmit={send}>
-          <fieldset className="dx-reasons">
-            <legend className="sr-only">{c.reportTitle}</legend>
-            {(Object.keys(c.reasons) as (keyof typeof c.reasons)[]).map((key) => (
-              <label key={key} className={reason === key ? 'on' : ''}>
-                <input type="radio" name="reason" checked={reason === key} onChange={() => setReason(key)} />
-                {c.reasons[key]}
-              </label>
-            ))}
-          </fieldset>
-          <label className="field">
-            <span>{c.reportDetails}</span>
-            <textarea value={details} maxLength={500} onChange={(e) => setDetails(e.target.value)} />
-          </label>
-          <button className="primary full" type="submit" disabled={!reason || busy}>
-            {busy ? <LoaderCircle size={16} className="loading-icon" /> : <Flag size={16} />}
-            {c.reportSend}
-          </button>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

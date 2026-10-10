@@ -33,7 +33,9 @@ export type CommunityErrorKey =
   | 'own_comment'
   | 'target_not_found'
   | 'comment_not_found'
-  | 'invalid_action';
+  | 'invalid_action'
+  | 'invalid_kind'
+  | 'invalid_works';
 export class CommunityFailure extends Error {
   constructor(
     public key: CommunityErrorKey,
@@ -70,6 +72,8 @@ export function fromDatabase(error: { message?: string; code?: string }): Commun
     'target_not_found',
     'comment_not_found',
     'invalid_action',
+    'invalid_kind',
+    'invalid_works',
   ];
   return known.includes(key) ? new CommunityFailure(key, STATUS[key] ?? 400) : null;
 }
@@ -86,6 +90,8 @@ type Row = {
   episode: number | null;
   title: string;
   poster: string;
+  backdrop: string;
+  year: string;
 };
 const toTarget = (r: Row): Target => ({
   id: r.id,
@@ -96,6 +102,8 @@ const toTarget = (r: Row): Target => ({
   episode: r.episode,
   title: r.title,
   poster: r.poster,
+  backdrop: r.backdrop,
+  year: r.year,
 });
 
 /** Seasons and their episode counts, from the series' own catalog; null when unavailable. */
@@ -153,12 +161,20 @@ async function detailOrFail(ref: TargetRef, lang: Lang) {
   }
 }
 
-/** The discussion of a work or episode: the existing one, or a new one once the catalog confirms it. */
-export async function ensureTarget(supabase: SupabaseClient, ref: TargetRef, lang: Lang): Promise<Target> {
+/**
+ * The discussion of a work or episode: the existing one, or a new one once the catalog confirms it.
+ * `refresh` reads the catalog again (title, images, year), e.g. before a recommendation.
+ */
+export async function ensureTarget(
+  supabase: SupabaseClient,
+  ref: TargetRef,
+  lang: Lang,
+  refresh = false,
+): Promise<Target> {
   if (refProblem(ref)) throw new CommunityFailure('badTarget', 400);
   let query = supabase
     .from('community_targets')
-    .select('id, kind, source, source_id, season, episode, title, poster')
+    .select('id, kind, source, source_id, season, episode, title, poster, backdrop, year')
     .eq('kind', ref.kind)
     .eq('source', ref.source)
     .eq('source_id', ref.sourceId);
@@ -166,7 +182,7 @@ export async function ensureTarget(supabase: SupabaseClient, ref: TargetRef, lan
   query = ref.episode === null ? query.is('episode', null) : query.eq('episode', ref.episode);
   const { data, error } = await query.maybeSingle();
   if (error) throw new Error(`Target read failed (${error.code})`);
-  if (data) return toTarget(data as Row);
+  if (data && !refresh) return toTarget(data as Row);
 
   const detail = await detailOrFail(ref, lang);
   if (ref.episode !== null && ref.kind === 'anime') {
@@ -183,6 +199,8 @@ export async function ensureTarget(supabase: SupabaseClient, ref: TargetRef, lan
   if (!admin) throw new CommunityFailure('unavailable', 503);
   const title = detail.title.trim().slice(0, 180) || ref.sourceId;
   const poster = POSTER.test(detail.poster) ? detail.poster : '';
+  const backdrop = detail.backdrop && POSTER.test(detail.backdrop) ? detail.backdrop : '';
+  const year = (detail.catalog.year || '').trim().slice(0, 12);
   const { data: id, error: saveError } = await admin.rpc('community_ensure_target', {
     p_kind: ref.kind,
     p_source: ref.source,
@@ -191,9 +209,11 @@ export async function ensureTarget(supabase: SupabaseClient, ref: TargetRef, lan
     p_episode: ref.episode,
     p_title: title,
     p_poster: poster,
+    p_backdrop: backdrop,
+    p_year: year,
   });
   if (saveError || typeof id !== 'string') throw new Error(`Target save failed (${saveError?.code})`);
-  return { id, ...ref, title, poster };
+  return { id, ...ref, title, poster, backdrop, year };
 }
 
 /** What the episode picker can offer: a number for anime, seasons for series, nothing for the rest. */
