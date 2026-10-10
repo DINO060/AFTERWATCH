@@ -544,10 +544,15 @@ function FeedCard({
         </div>
       ) : (
         <div className="cv-plain">
-          <button className="cv-where" onClick={() => onOpen(ref)}>
-            {where}
+          <button className="cv-plain-media" onClick={() => onOpen(ref)} aria-label={where}>
+            <Poster src={target.poster} className="cv-plain-poster" />
           </button>
-          {text}
+          <div className="cv-plain-text">
+            <button className="cv-where" onClick={() => onOpen(ref)}>
+              {where}
+            </button>
+            {text}
+          </div>
         </div>
       )}
 
