@@ -940,6 +940,17 @@ const fr = {
     detailDown: 'La fiche est momentanément indisponible. Réessaie dans un instant.',
   },
   auth: {
+    sentSignupTitle: 'Compte créé !',
+    sentSignupText: (email: string) =>
+      `On t’a envoyé un lien de confirmation à ${email}. Clique dessus pour activer ton compte, puis connecte-toi.`,
+    sentMagicTitle: 'Regarde tes e-mails',
+    sentMagicText: (email: string) =>
+      `On t’a envoyé un lien de connexion à ${email}. Clique dessus pour te connecter, sans mot de passe.`,
+    sentResetTitle: 'Regarde tes e-mails',
+    sentResetText: (email: string) =>
+      `Si un compte existe pour ${email}, un lien vient de partir pour choisir un nouveau mot de passe.`,
+    sentSpam: 'Rien reçu d’ici quelques minutes ? Regarde dans les indésirables ou l’onglet Promotions.',
+    sentOk: 'Compris',
     captchaChecking: 'Vérification anti-robots… (ça peut prendre jusqu’à 20 secondes)',
     captchaFailed: 'La vérification anti-robots n’a pas marché. Recharge la page et réessaie.',
     linkExpired:
@@ -2006,6 +2017,17 @@ const en: Messages = {
     detailDown: 'These details are temporarily unavailable. Try again shortly.',
   },
   auth: {
+    sentSignupTitle: 'Account created!',
+    sentSignupText: (email: string) =>
+      `We sent a confirmation link to ${email}. Click it to activate your account, then log in.`,
+    sentMagicTitle: 'Check your e-mail',
+    sentMagicText: (email: string) =>
+      `We sent a sign-in link to ${email}. Click it to sign in, no password needed.`,
+    sentResetTitle: 'Check your e-mail',
+    sentResetText: (email: string) =>
+      `If an account exists for ${email}, a link to choose a new password is on its way.`,
+    sentSpam: 'Nothing after a few minutes? Check your spam or Promotions folder.',
+    sentOk: 'Got it',
     captchaChecking: 'Checking you are not a robot… (this can take up to 20 seconds)',
     captchaFailed: 'The anti-robot check did not work. Reload the page and try again.',
     linkExpired:

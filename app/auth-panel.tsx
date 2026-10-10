@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   LogOut,
   Mail,
+  MailCheck,
   Send,
   UserPlus,
 } from 'lucide-react';
@@ -29,11 +30,16 @@ import { DISPLAY_NAME_MAX } from '@/lib/display-name';
 import { PASSWORD_MIN, passwordProblem } from '@/lib/password';
 import type { Messages } from '@/lib/i18n';
 import { legalPaths } from '@/lib/legal';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { CaptchaBox, captchaEnabled } from './captcha';
 import { useI18n } from './i18n-provider';
 
 // Messages are kept as keys so they follow a language switch while on screen.
-type AuthText = keyof Messages['auth'];
+type AuthText = {
+  [K in keyof Messages['auth']]: Messages['auth'][K] extends string ? K : never;
+}[keyof Messages['auth']];
+/** "Check your e-mails" moments, shown in a pop-up so they cannot be missed. */
+type Sent = { kind: 'signup' | 'magic' | 'reset'; email: string };
 export type AuthMode = 'login' | 'signup';
 type Screen = AuthMode | 'forgot' | 'magic';
 type Busy = 'login' | 'signup' | 'reset' | 'magic' | 'telegram' | 'google' | 'signout' | 'name' | 'password';
@@ -161,6 +167,7 @@ export function AuthPanel({
   const [busy, setBusy] = useState<Busy | null>(null);
   const [message, setMessage] = useState<AuthText | ''>('');
   const [error, setError] = useState<AuthText | ''>('');
+  const [sent, setSent] = useState<Sent | null>(null);
   // The anti-robot check runs in the background while the form is filled in (it can take ~10 s).
   // Its token is used once per attempt; a click before it is ready waits for it.
   const [captcha, setCaptcha] = useState<string | null>(null);
@@ -279,14 +286,21 @@ export function AuthPanel({
         checkNewPassword(password);
         await signUpWithPassword(email, password, signupName, await captchaToken());
         setPasswordValue('');
+        setSent({ kind: 'signup', email: email.trim() });
       },
       'sendFailed',
-      'signupSent',
     );
   };
   const resetPassword = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    run('reset', async () => sendPasswordReset(email, await captchaToken()), 'sendFailed', 'resetSent');
+    run(
+      'reset',
+      async () => {
+        await sendPasswordReset(email, await captchaToken());
+        setSent({ kind: 'reset', email: email.trim() });
+      },
+      'sendFailed',
+    );
   };
   const sendMagicLink = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -306,9 +320,9 @@ export function AuthPanel({
         });
         if (authError?.code === 'email_address_not_authorized') throw new RangeError('emailNotOpen');
         if (authError) throw authError;
+        setSent({ kind: 'magic', email: email.trim() });
       },
       'sendFailed',
-      'emailSent',
     );
   };
   const changePassword = (event: FormEvent<HTMLFormElement>) => {
@@ -688,6 +702,43 @@ export function AuthPanel({
           )}
         </>
       )}
+      <Dialog
+        open={sent !== null}
+        onOpenChange={(open) => {
+          if (open || !sent) return;
+          // After signing up (or a reset link), the next step is logging in: the e-mail stays filled in.
+          if (sent.kind !== 'magic') go('login');
+          setSent(null);
+        }}
+      >
+        {sent && (
+          <DialogContent className="dx-dialog sent-dialog">
+            <span className="sent-icon" aria-hidden>
+              <MailCheck size={26} />
+            </span>
+            <DialogTitle>
+              {sent.kind === 'signup'
+                ? t.auth.sentSignupTitle
+                : sent.kind === 'magic'
+                  ? t.auth.sentMagicTitle
+                  : t.auth.sentResetTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {sent.kind === 'signup'
+                ? t.auth.sentSignupText(sent.email)
+                : sent.kind === 'magic'
+                  ? t.auth.sentMagicText(sent.email)
+                  : t.auth.sentResetText(sent.email)}
+            </DialogDescription>
+            <p className="form-hint">{t.auth.sentSpam}</p>
+            <DialogClose asChild>
+              <button className="primary" type="button">
+                {t.auth.sentOk}
+              </button>
+            </DialogClose>
+          </DialogContent>
+        )}
+      </Dialog>
       <div ref={notices}>
         {message && (
           <p className="notice" role="status">

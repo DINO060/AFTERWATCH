@@ -1027,6 +1027,35 @@ h1 {
 .auth-form > .captcha-box:not(.shown) {
   margin-bottom: -14px;
 }
+/* "Compte créé !" and other "check your e-mails" pop-ups. */
+.sent-dialog[data-slot='dialog-content'] {
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.sent-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: rgba(255, 106, 85, 0.15);
+  color: var(--primary);
+}
+.sent-dialog [data-slot='dialog-description'] {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+.sent-dialog .form-hint {
+  margin: 0;
+}
+.sent-dialog .primary {
+  width: 100%;
+  height: 46px;
+  margin-top: 4px;
+}
 .captcha-hint {
   display: flex;
   align-items: center;
