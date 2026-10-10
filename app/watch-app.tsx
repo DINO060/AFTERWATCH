@@ -173,11 +173,14 @@ export default function WatchApp({
   tmdb,
   initialRef = null,
   initialView = 'home',
+  initialTag = null,
 }: {
   tmdb: boolean;
   /** Opened at a discussion's own address (/oeuvre/…). */
   initialRef?: TargetRef | null;
   initialView?: View;
+  /** Opened at /communaute?tag=… */
+  initialTag?: string | null;
 }) {
   const { t, locale } = useI18n();
   // load() is an effect dependency: read the texts through a ref so a language switch does not refetch.
@@ -203,6 +206,7 @@ export default function WatchApp({
   const [aiReady, setAiReady] = useState(false);
   const [view, setView] = useState<View>(initialRef ? 'discussion' : initialView);
   const [discussionRef, setDiscussionRef] = useState<TargetRef | null>(initialRef);
+  const [communityTag, setCommunityTag] = useState<string | null>(initialTag);
   const [moderator, setModerator] = useState(false);
   // Whether the current discussion was opened from inside the app (then "back" goes back there).
   const cameFromApp = useRef(false);
@@ -240,6 +244,13 @@ export default function WatchApp({
       cameFromApp.current = true;
     }
   };
+  // A #tag: the Communauté feed with only its posts, at an address that can be shared.
+  const openTag = (tag: string | null) => {
+    setCommunityTag(tag);
+    if (view !== 'community') navigate('community');
+    else window.scrollTo({ top: 0 });
+    window.history.replaceState(null, '', tag ? `/communaute?tag=${encodeURIComponent(tag)}` : '/communaute');
+  };
   const leaveDiscussion = () => {
     if (cameFromApp.current) window.history.back();
     else navigate('home');
@@ -265,8 +276,10 @@ export default function WatchApp({
         setDiscussionRef(ref);
         setView('discussion');
       } else if (window.location.pathname === '/moderation') setView('moderation');
-      else if (window.location.pathname === '/communaute') setView('community');
-      else setView((v) => (v === 'discussion' || v === 'moderation' || v === 'community' ? 'home' : v));
+      else if (window.location.pathname === '/communaute') {
+        setView('community');
+        setCommunityTag(new URLSearchParams(window.location.search).get('tag'));
+      } else setView((v) => (v === 'discussion' || v === 'moderation' || v === 'community' ? 'home' : v));
       cameFromApp.current = !!(window.history.state && window.history.state.afterwatch);
     };
     window.addEventListener('popstate', onPop);
@@ -1101,6 +1114,8 @@ export default function WatchApp({
                   refTarget={discussionRef}
                   collection={state.media}
                   signedIn={!!auth.user}
+                  userId={auth.user?.id || null}
+                  onTag={openTag}
                   onOpen={openDiscussion}
                   onBack={leaveDiscussion}
                   onSignIn={() => openAuth('login')}
@@ -1114,6 +1129,9 @@ export default function WatchApp({
               (authChecked ? (
                 <CommunityView
                   key={auth.user?.id || 'guest'}
+                  userId={auth.user?.id || null}
+                  tag={communityTag}
+                  onTag={openTag}
                   collection={state.media}
                   signedIn={!!auth.user}
                   canAdd={canAct}

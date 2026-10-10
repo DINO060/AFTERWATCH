@@ -36,6 +36,11 @@ export const TARGET_REACTIONS: { key: TargetReaction; emoji: string }[] = [
   { key: 'heart', emoji: '❤️' },
 ];
 export const RECO_MAX = 500;
+export const POST_MAX = 2000;
+export const PHOTOS_MAX = 4;
+export const PHOTO_BUCKET = 'community-photos';
+/** A photo of a post, in the member's own folder of the photo bucket. */
+export type Photo = { path: string; w: number; h: number };
 export type Debrief = {
   id: string;
   parentId: string | null;
@@ -44,6 +49,8 @@ export type Debrief = {
   username: string | null;
   mine: boolean;
   body: string;
+  photos: Photo[];
+  tags: string[];
   spoiler: Spoiler;
   createdAt: string;
   edited: boolean;
@@ -68,6 +75,8 @@ export type Summary = {
 /** A post in the Communauté feed. A spoiler's body is null until the member may read it. */
 export type FeedItem = Omit<Debrief, 'body' | 'parentId' | 'replies'> & {
   body: string | null;
+  /** How many photos the post has, even while a spoiler's photos are not sent. */
+  photoCount: number;
   replyCount: number;
   inList: boolean;
   target: TargetRef & { title: string; poster: string; backdrop: string; year: string };
@@ -82,6 +91,35 @@ export function topReactions(counts: Partial<Record<Reaction, number>>, max = 3)
     total: used.reduce((n, r) => n + (counts[r.key] || 0), 0),
   };
 }
+/** The #tags written in a text: letters, digits and _, 2 to 30 long, at most 10, lower case. */
+export function extractTags(text: string): string[] {
+  const tags = new Set<string>();
+  for (const m of text.matchAll(/(^|[^\p{L}\p{N}_#&])#([\p{L}\p{N}_]{2,30})(?![\p{L}\p{N}_])/gu)) {
+    tags.add(m[2].toLocaleLowerCase('fr'));
+    if (tags.size === 10) break;
+  }
+  return [...tags];
+}
+
+/** A text cut into plain parts and #tags, to make the tags clickable. */
+export function splitTags(text: string): ({ text: string } | { tag: string; text: string })[] {
+  const parts: ({ text: string } | { tag: string; text: string })[] = [];
+  let last = 0;
+  for (const m of text.matchAll(/(^|[^\p{L}\p{N}_#&])#([\p{L}\p{N}_]{2,30})(?![\p{L}\p{N}_])/gu)) {
+    const start = (m.index ?? 0) + m[1].length;
+    if (start > last) parts.push({ text: text.slice(last, start) });
+    parts.push({ tag: m[2].toLocaleLowerCase('fr'), text: `#${m[2]}` });
+    last = start + 1 + m[2].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
+}
+
+/** The public address of a post's photo. */
+export function photoUrl(supabaseUrl: string, path: string): string {
+  return `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/${PHOTO_BUCKET}/${path}`;
+}
+
 export type SeasonInfo = { season: number; episodes: number };
 /** What the episode picker can offer for a work. */
 export type EpisodeGuide =

@@ -1,47 +1,35 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight,
   Check,
   ChevronRight,
-  Flag,
+  Hash,
+  ImagePlus,
   MessageCircle,
-  MoreHorizontal,
+  PencilLine,
   Plus,
   ShieldCheck,
+  Smile,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import type { CatalogItem } from '@/lib/catalog';
 import {
   inCollection,
   refFromMedia,
-  topReactions,
+  refPath,
   viewerSeen,
   type FeedItem,
+  type Photo,
   type Reaction,
   type TargetRef,
 } from '@/lib/community';
 import type { Media } from '@/lib/watch';
-import {
-  Avatar,
-  Loading,
-  Poster,
-  ReportDialog,
-  SpoilerVeil,
-  Switch,
-  api,
-  post,
-  problem,
-  useAgo,
-} from './community-ui';
+import { Avatar, Loading, Poster, ReportDialog, Switch, api, post, problem } from './community-ui';
 import { useI18n } from './i18n-provider';
-import RecommendSheet from './recommend-sheet';
+import { PhotoGrid, PostRow, RichText, SpoilerCover } from './post-ui';
+import ComposeSheet from './compose-sheet';
 
 type Kind = TargetRef['kind'];
 type WorkKey = Pick<TargetRef, 'kind' | 'source' | 'sourceId'>;
@@ -52,25 +40,40 @@ type Activity = WorkKey & {
   /** Set when the answer arrives: a message in the last 48 hours. */
   fresh?: boolean;
 };
+type Trend = { tag: string; posts: number; members: number };
 type Pick4 = { ref: TargetRef; title: string; image: string; item?: CatalogItem };
+type Revealed = Record<string, { body: string; photos: Photo[] }>;
 const FRESH = 48 * 3600 * 1000;
 const FILTERS: (Kind | null)[] = [null, 'anime', 'series', 'film', 'manga'];
 const keyOf = (r: WorkKey) => `${r.kind}:${r.source}:${r.sourceId}`;
 const workOnly = (r: WorkKey): TargetRef => ({ ...r, season: null, episode: null });
+const refOf = (t: FeedItem['target']): TargetRef => ({
+  kind: t.kind,
+  source: t.source,
+  sourceId: t.sourceId,
+  season: t.season,
+  episode: t.episode,
+});
 
-/** "Communauté": recommendations and reactions from members, with spoilers kept hidden. */
+/** "Communauté": posts about works and episodes, X / Threads style, with spoilers kept hidden. */
 export default function CommunityView({
+  userId,
   collection,
   signedIn,
   canAdd,
+  tag,
+  onTag,
   onOpen,
   onSignIn,
   onBrowse,
   onAdd,
 }: {
+  userId: string | null;
   collection: Media[];
   signedIn: boolean;
   canAdd: boolean;
+  tag: string | null;
+  onTag: (tag: string | null) => void;
   onOpen: (ref: TargetRef) => void;
   onSignIn: () => void;
   onBrowse: () => void;
@@ -95,28 +98,31 @@ export default function CommunityView({
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [protection, setProtection] = useState(true);
-  const [bodies, setBodies] = useState<Record<string, string>>({});
+  const [revealed, setRevealed] = useState<Revealed>({});
   const [revealing, setRevealing] = useState<Record<string, boolean>>({});
-  const [recommending, setRecommending] = useState(false);
+  const [composing, setComposing] = useState(false);
   const [adding, setAdding] = useState<Record<string, boolean>>({});
   const [toReport, setToReport] = useState<string | null>(null);
+  const [trends, setTrends] = useState<Trend[]>([]);
+  const [username, setUsername] = useState<string | null>(null);
 
   const seenOf = (item: FeedItem) => viewerSeen(item.target, collection);
   // Spoilers the member has already seen are shown without asking.
-  const fetchSeen = (list: FeedItem[]) => {
+  const revealSeen = (list: FeedItem[]) => {
     const ids = list
       .filter((i) => i.body === null && i.spoiler === 'episode' && seenOf(i) === true)
       .map((i) => i.id)
       .slice(0, 50);
     if (!ids.length) return;
-    post<Record<string, string>>({ op: 'bodies', ids })
-      .then((found) => setBodies((b) => ({ ...b, ...found })))
+    post<Revealed>({ op: 'reveal', ids })
+      .then((found) => setRevealed((r) => ({ ...r, ...found })))
       .catch(() => {});
   };
   const load = (offset: number) =>
     post<{ items: FeedItem[]; hasMore: boolean; spoilerProtection: boolean }>({
-      op: 'feed',
+      op: 'timeline',
       kind,
+      tag,
       works,
       offset,
     });
@@ -131,7 +137,7 @@ export default function CommunityView({
         setHasMore(data.hasMore);
         setProtection(data.spoilerProtection);
         setFailed(false);
-        fetchSeen(data.items);
+        revealSeen(data.items);
       })
       .catch(() => live && setFailed(true));
     return () => {
@@ -139,13 +145,27 @@ export default function CommunityView({
     };
     // listKey stands for works.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, listKey, reload, signedIn]);
+  }, [kind, tag, listKey, reload, signedIn]);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let live = true;
+    api<Trend[]>('/api/community?op=trending')
+      .then((list) => live && setTrends(list))
+      .catch(() => {});
+    api<{ username: string | null }>('/api/profile')
+      .then((data) => live && setUsername(data.username ?? null))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [signedIn]);
 
   if (!signedIn)
     return (
       <div className="cv">
         <div className="cv-main">
-          <PageHead />
+          <h1 className="cv-title">{h.title}</h1>
           <section className="panel dx-blocked">
             <p>{h.signIn}</p>
             <button className="primary" onClick={onSignIn}>
@@ -163,7 +183,7 @@ export default function CommunityView({
       const data = await load(items.length);
       setItems([...items, ...data.items.filter((n) => !items.some((x) => x.id === n.id))]);
       setHasMore(data.hasMore);
-      fetchSeen(data.items);
+      revealSeen(data.items);
     } catch {
       toast.error(h.loadFailed);
     } finally {
@@ -175,6 +195,7 @@ export default function CommunityView({
     setProtection(on);
     try {
       await post({ op: 'prefs', spoilerProtection: on });
+      setRevealed({});
       setReload((n) => n + 1);
     } catch (e) {
       setProtection(!on);
@@ -185,8 +206,8 @@ export default function CommunityView({
   const reveal = async (id: string) => {
     setRevealing((r) => ({ ...r, [id]: true }));
     try {
-      const found = await post<Record<string, string>>({ op: 'bodies', ids: [id] });
-      setBodies((b) => ({ ...b, ...found }));
+      const found = await post<Revealed>({ op: 'reveal', ids: [id] });
+      setRevealed((r) => ({ ...r, ...found }));
     } catch (e) {
       toast.error(problem(e, t.community.actionFailed));
     } finally {
@@ -212,6 +233,19 @@ export default function CommunityView({
     }
   };
 
+  const share = async (ref: TargetRef, title: string) => {
+    const url = window.location.origin + refPath(ref);
+    try {
+      if (navigator.share) await navigator.share({ title, url });
+      else {
+        await navigator.clipboard.writeText(url);
+        toast.success(h.linkCopied);
+      }
+    } catch {
+      // Share sheet closed.
+    }
+  };
+
   // "+ Ma liste": the catalog's own entry, added like from the catalog page.
   const add = async (ref: WorkKey, item?: CatalogItem) => {
     const key = keyOf(ref);
@@ -234,39 +268,66 @@ export default function CommunityView({
     }
   };
 
+  const write = () => (userId ? setComposing(true) : onSignIn());
+  const showTrends = trends.length > 0 && !tag;
+
   return (
     <div className="cv">
       <div className="cv-main">
-        <PageHead onRecommend={() => setRecommending(true)} />
-        <div className="dx-strip cv-chips" role="group" aria-label={h.filters}>
+        <h1 className="cv-title">{h.title}</h1>
+        {tag ? (
+          <div className="cv-tagbar">
+            <Hash size={20} aria-hidden />
+            <strong>{tag}</strong>
+            <button type="button" className="dx-icon" aria-label={h.clearTag} onClick={() => onTag(null)}>
+              <X size={18} />
+            </button>
+          </div>
+        ) : null}
+        <div className="cv-tabs" role="tablist" aria-label={h.filters}>
           {FILTERS.map((k) => (
             <button
               key={k ?? 'all'}
-              className={`dx-chip${kind === k ? ' on' : ''}`}
-              aria-pressed={kind === k}
+              type="button"
+              role="tab"
+              aria-selected={kind === k}
+              className={kind === k ? 'on' : ''}
               onClick={() => {
                 if (kind === k) return;
                 setItems(null);
                 setKind(k);
               }}
             >
-              {k ? t.kindsPlural[k] : h.forYou}
+              <span>{k ? t.kindsPlural[k] : h.forYou}</span>
             </button>
           ))}
         </div>
-        <div className="cv-protect">
-          <ShieldCheck size={18} aria-hidden />
-          <span>
-            <strong>{h.protection}</strong> <span>· {protection ? h.protectionHint : h.protectionOff}</span>
+
+        <button type="button" className="cv-compose" onClick={write}>
+          <Avatar name={username} round />
+          <span className="cv-compose-text">{h.whatsNew}</span>
+          <span className="cv-compose-tools" aria-hidden>
+            <ImagePlus size={19} />
+            <Smile size={19} />
           </span>
+          <span className="cv-compose-post">{h.publish}</span>
+        </button>
+
+        <div className="cv-protect">
+          <ShieldCheck size={16} aria-hidden />
+          <span>{protection ? h.protectionShortOn : h.protectionShortOff}</span>
           <Switch on={protection} onChange={toggleProtection} label={h.protection} tone="green" />
         </div>
-        <button className="cv-share" onClick={() => setRecommending(true)}>
-          <span className="cv-share-text">{h.shareReco}</span>
-          <span className="cv-share-plus" aria-hidden>
-            <Plus size={20} strokeWidth={2.4} />
-          </span>
-        </button>
+
+        {showTrends && (
+          <div className="dx-strip cv-trend-strip" role="group" aria-label={h.trends}>
+            {trends.map((tr) => (
+              <button key={tr.tag} type="button" className="cv-trend-chip" onClick={() => onTag(tr.tag)}>
+                #{tr.tag}
+              </button>
+            ))}
+          </div>
+        )}
 
         {failed && !items ? (
           <div className="notice danger dx-error" role="alert">
@@ -280,28 +341,32 @@ export default function CommunityView({
         ) : items.length === 0 ? (
           <section className="cx-empty">
             <MessageCircle size={28} aria-hidden />
-            <p>{kind ? h.emptyKind : h.empty}</p>
+            <p>{tag ? h.tagEmpty : kind ? h.emptyKind : h.empty}</p>
           </section>
         ) : (
           <div className="cv-feed">
             {items.map((item) => (
-              <FeedCard
+              <FeedPost
                 key={item.id}
                 item={item}
-                body={item.body ?? bodies[item.id] ?? null}
+                shown={
+                  item.body !== null ? { body: item.body, photos: item.photos } : (revealed[item.id] ?? null)
+                }
                 seen={seenOf(item)}
                 inList={inCollection(item.target, collection)}
                 adding={!!adding[keyOf(item.target)]}
                 revealing={!!revealing[item.id]}
                 onOpen={onOpen}
+                onTag={onTag}
                 onReveal={() => reveal(item.id)}
                 onLike={() => like(item)}
+                onShare={() => share(refOf(item.target), item.target.title)}
                 onAdd={() => add(item.target)}
                 onReport={() => setToReport(item.id)}
               />
             ))}
             {hasMore && (
-              <button className="dx-more" onClick={more} disabled={busy}>
+              <button className="dx-more cv-more" onClick={more} disabled={busy}>
                 {busy ? <Loading /> : h.loadMore}
               </button>
             )}
@@ -319,15 +384,26 @@ export default function CommunityView({
         />
         <section className="cv-panel cv-pace">
           <div className="cv-pace-head">
-            <ShieldCheck size={24} aria-hidden />
+            <ShieldCheck size={22} aria-hidden />
             <h2>{h.atYourPace}</h2>
-          </div>
-          <p>{protection ? h.atYourPaceText : h.atYourPaceOff}</p>
-          <div className="cv-pace-row">
-            <span>{h.protection}</span>
             <Switch on={protection} onChange={toggleProtection} label={h.protection} tone="green" />
           </div>
+          <p>{protection ? h.atYourPaceText : h.atYourPaceOff}</p>
         </section>
+        {trends.length > 0 && (
+          <section className="cv-panel">
+            <h2>{h.trends}</h2>
+            <p className="cv-panel-hint">{h.trendsHint}</p>
+            <div className="cv-trends">
+              {trends.map((tr) => (
+                <button key={tr.tag} type="button" className="cv-trend" onClick={() => onTag(tr.tag)}>
+                  <strong>#{tr.tag}</strong>
+                  <span>{h.trendMembers(tr.members)}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         <Discover
           collection={collection}
           works={works}
@@ -338,12 +414,18 @@ export default function CommunityView({
         />
       </aside>
 
-      {recommending && (
-        <RecommendSheet
+      <button type="button" className="cv-fab" aria-label={h.write} onClick={write}>
+        <PencilLine size={22} />
+      </button>
+
+      {composing && userId && (
+        <ComposeSheet
+          userId={userId}
           collection={collection}
-          onClose={() => setRecommending(false)}
+          initialText={tag ? `#${tag} ` : ''}
+          onClose={() => setComposing(false)}
           onPublished={(item) => {
-            setRecommending(false);
+            setComposing(false);
             setItems((list) => (list ? [item, ...list.filter((x) => x.id !== item.id)] : [item]));
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
@@ -354,234 +436,138 @@ export default function CommunityView({
   );
 }
 
-function PageHead({ onRecommend }: { onRecommend?: () => void }) {
-  const { t } = useI18n();
-  const h = t.community.hub;
-  return (
-    <header className="cv-head">
-      <div>
-        <h1>{h.title}</h1>
-        <p>{h.subtitle}</p>
-      </div>
-      {onRecommend && (
-        <button className="primary cv-reco-btn" onClick={onRecommend}>
-          <Plus size={18} />
-          {h.recommend}
-        </button>
-      )}
-    </header>
-  );
-}
-
-function FeedCard({
+function FeedPost({
   item,
-  body,
+  shown,
   seen,
   inList,
   adding,
   revealing,
   onOpen,
+  onTag,
   onReveal,
   onLike,
+  onShare,
   onAdd,
   onReport,
 }: {
   item: FeedItem;
-  body: string | null;
+  shown: { body: string; photos: Photo[] } | null;
   seen: boolean | null;
   inList: boolean;
   adding: boolean;
   revealing: boolean;
   onOpen: (ref: TargetRef) => void;
+  onTag: (tag: string) => void;
   onReveal: () => void;
   onLike: () => void;
+  onShare: () => void;
   onAdd: () => void;
   onReport: () => void;
 }) {
   const { t } = useI18n();
   const c = t.community;
   const h = c.hub;
-  const ago = useAgo();
   const target = item.target;
-  const ref: TargetRef = {
-    kind: target.kind,
-    source: target.source,
-    sourceId: target.sourceId,
-    season: target.season,
-    episode: target.episode,
-  };
-  const work = workOnly(target);
+  const ref = refOf(target);
   const reco = item.kind === 'reco';
   const where = [
-    target.title,
     target.season !== null ? c.seasonTiny(target.season) : null,
     target.episode !== null ? c.episodeShort(target.episode) : null,
   ]
     .filter(Boolean)
     .join(' · ');
   const meta = [t.kinds[target.kind], target.year].filter(Boolean).join(' · ');
-  const { emojis, total } = topReactions(item.reactions);
-  const veil =
-    body === null ? (
-      <SpoilerVeil
-        title={item.spoiler === 'later' ? c.spoilerLater : h.spoilerMasked}
-        reason={
-          item.spoiler === 'later'
-            ? c.veiledLater
-            : seen === false
-              ? target.episode === null
-                ? h.notFinished
-                : h.notSeenEpisode
-              : h.maybeNotSeen
-        }
-        action={h.show}
-        busy={revealing}
-        onShow={onReveal}
-      />
-    ) : null;
-  const text =
-    body !== null ? (
-      <>
-        {item.spoiler !== 'none' && <span className="dx-spoiler-tag">{h.spoilerTag}</span>}
-        <p className={`cv-text${reco ? ' quote' : ''}`}>{reco ? `« ${body} »` : body}</p>
-      </>
-    ) : null;
+
+  const chip = !reco && (
+    <button type="button" className="px-work" onClick={() => onOpen(ref)}>
+      <Poster src={target.poster} className="px-work-poster" />
+      <span>
+        <strong>{target.title}</strong>
+        {where && <span> · {where}</span>}
+      </span>
+    </button>
+  );
+  const embed = reco && (
+    <div className="px-embed">
+      <button
+        type="button"
+        className="px-embed-media"
+        onClick={() => onOpen(workOnly(target))}
+        aria-label={target.title}
+      >
+        <Poster
+          src={target.backdrop || target.poster}
+          className={`px-embed-img${target.backdrop ? '' : ' tall'}`}
+        />
+      </button>
+      <div className="px-embed-body">
+        <div className="px-embed-text">
+          <button type="button" className="px-embed-title" onClick={() => onOpen(workOnly(target))}>
+            {target.title}
+          </button>
+          <span className="px-embed-meta">
+            {meta}
+            {item.rating !== null && <span className="px-embed-score"> · ★ {item.rating}/10</span>}
+          </span>
+        </div>
+        {inList ? (
+          <span className="px-embed-add done">
+            <Check size={15} aria-hidden />
+            {h.inList}
+          </span>
+        ) : (
+          <button type="button" className="px-embed-add" onClick={onAdd} disabled={adding}>
+            <Plus size={15} aria-hidden />
+            {h.addToList}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <article className={`cv-card${reco ? ' reco' : ''}`}>
-      <header className="cv-card-head">
-        <Avatar name={item.username} />
-        <div className="cv-who">
-          <span>
-            <strong>{item.username ?? c.deletedAccount}</strong>
-            {!reco && (
-              <span className="cv-did"> · {target.episode !== null ? h.justWatched : h.talksAbout}</span>
-            )}
-          </span>
-          <span className="cv-time">{ago(item.createdAt)}</span>
-        </div>
-        {reco ? (
-          <span className="cv-tag">{h.recommends}</span>
-        ) : (
-          item.rating !== null && (
-            <span
-              className="dx-badge"
-              title={c.authorVerdict(item.rating)}
-              aria-label={c.authorVerdict(item.rating)}
-            >
-              {item.rating}
-            </span>
-          )
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="dx-icon" aria-label={c.actions}>
-              <MoreHorizontal size={18} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onOpen(ref)}>
-              <MessageCircle />
-              {h.seeDiscussion}
-            </DropdownMenuItem>
-            {!item.mine && (
-              <DropdownMenuItem onClick={onReport}>
-                <Flag />
-                {c.report}
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </header>
-
-      {reco ? (
-        <div className="cv-reco">
-          <button
-            className="cv-reco-media"
-            onClick={() => onOpen(work)}
-            aria-label={`${target.title} · ${c.discussion}`}
-          >
-            <Poster
-              src={target.backdrop || target.poster}
-              className={`cv-reco-img${target.backdrop ? '' : ' tall'}`}
-            />
-          </button>
-          <div className="cv-reco-text">
-            <div className="cv-reco-title">
-              <button className="cv-title-link" onClick={() => onOpen(work)}>
-                {target.title}
-              </button>
-              {item.rating !== null && <span className="cv-stars">★ {item.rating}/10</span>}
-            </div>
-            {meta && <span className="cv-meta">{meta}</span>}
-            {veil ?? text}
-            {inList ? (
-              <span className="cv-add done">
-                <Check size={16} aria-hidden />
-                {h.inList}
-              </span>
-            ) : (
-              <button className="cv-add" onClick={onAdd} disabled={adding}>
-                <Plus size={16} aria-hidden />
-                <span className="cv-add-short">{h.addToList}</span>
-                <span className="cv-add-long">{h.addToListLong}</span>
-              </button>
-            )}
-          </div>
-        </div>
-      ) : body === null ? (
-        <div className={`cv-ep${target.backdrop ? ' has-wide' : ''}`}>
-          <button className="cv-ep-media" onClick={() => onOpen(ref)} aria-label={where}>
-            <Poster src={target.poster} className="cv-ep-tall" />
-            {target.backdrop && <Poster src={target.backdrop} className="cv-ep-wide" />}
-          </button>
-          <div className="cv-ep-text">
-            <button className="cv-where" onClick={() => onOpen(ref)}>
-              {where}
-            </button>
-            {veil}
-          </div>
-        </div>
+    <PostRow
+      post={item}
+      context={chip}
+      replyCount={item.replyCount}
+      onReplies={() => onOpen(ref)}
+      onLike={onLike}
+      onShare={onShare}
+      onReport={onReport}
+      menuExtra={
+        <DropdownMenuItem onClick={() => onOpen(ref)}>
+          <MessageCircle />
+          {h.seeDiscussion}
+        </DropdownMenuItem>
+      }
+    >
+      {shown === null ? (
+        <SpoilerCover
+          title={item.spoiler === 'later' ? c.spoilerLater : h.spoilerMasked}
+          reason={
+            item.spoiler === 'later'
+              ? c.veiledLater
+              : seen === false
+                ? target.episode === null
+                  ? h.notFinished
+                  : h.notSeenEpisode
+                : h.maybeNotSeen
+          }
+          photoCount={item.photoCount}
+          backdrop={target.backdrop || target.poster}
+          busy={revealing}
+          onShow={onReveal}
+        />
       ) : (
-        <div className="cv-plain">
-          <button className="cv-plain-media" onClick={() => onOpen(ref)} aria-label={where}>
-            <Poster src={target.poster} className="cv-plain-poster" />
-          </button>
-          <div className="cv-plain-text">
-            <button className="cv-where" onClick={() => onOpen(ref)}>
-              {where}
-            </button>
-            {text}
-          </div>
-        </div>
+        <>
+          {item.spoiler !== 'none' && <span className="dx-spoiler-tag">{h.spoilerTag}</span>}
+          {shown.body && <RichText text={shown.body} onTag={onTag} />}
+          <PhotoGrid photos={shown.photos} />
+        </>
       )}
-
-      <footer className="cv-foot">
-        <button
-          className={`dx-like${item.myReaction ? ' mine' : ''}`}
-          aria-pressed={item.myReaction === 'heart'}
-          aria-label={`${h.like}, ${h.reactionsAria(total)}`}
-          onClick={onLike}
-        >
-          <span aria-hidden>{emojis.length ? emojis.join('') : '❤️'}</span>
-          {total > 0 && total}
-        </button>
-        <button
-          className="dx-foot-btn"
-          onClick={() => onOpen(ref)}
-          aria-label={h.repliesAria(item.replyCount)}
-        >
-          <span aria-hidden>💬</span>
-          {item.replyCount}
-        </button>
-        {!reco && (
-          <button className="cv-open" onClick={() => onOpen(ref)}>
-            {h.seeDiscussion}
-            <ArrowRight size={15} aria-hidden />
-          </button>
-        )}
-      </footer>
-    </article>
+      {embed}
+    </PostRow>
   );
 }
 

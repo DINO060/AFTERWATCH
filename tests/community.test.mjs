@@ -12,6 +12,8 @@ import {
   workOf,
   topReactions,
   inCollection,
+  extractTags,
+  splitTags,
 } from '../lib/community.ts';
 
 const ref = (over = {}) => ({
@@ -175,4 +177,25 @@ test('"+ Ma liste" knows a title already in the list by its catalog entry', () =
   assert.equal(inCollection({ kind: 'anime', source: 'kitsu', sourceId: '12' }, list), true);
   assert.equal(inCollection({ kind: 'anime', source: 'jikan', sourceId: '12' }, list), false);
   assert.equal(inCollection({ kind: 'manga', source: 'kitsu', sourceId: '12' }, list), false);
+});
+
+test('#tags: letters with accents, digits and _, lower case, no duplicates, at most 10', () => {
+  assert.deepEqual(extractTags('Quel épisode #Gojo #JJK_S2 #gojo #Épisode17'), [
+    'gojo',
+    'jjk_s2',
+    'épisode17',
+  ]);
+  assert.deepEqual(extractTags('mail@site.fr #a # #x1 C#Sharp &#39; ##double'), ['x1']);
+  assert.deepEqual(extractTags('#' + 'a'.repeat(31)), [], 'too long');
+  assert.equal(extractTags(Array.from({ length: 12 }, (_, i) => `#tag${i}`).join(' ')).length, 10);
+});
+
+test('a text becomes plain parts and clickable #tags, in order', () => {
+  assert.deepEqual(splitTags('Trop bien #Gojo !'), [
+    { text: 'Trop bien ' },
+    { tag: 'gojo', text: '#Gojo' },
+    { text: ' !' },
+  ]);
+  assert.deepEqual(splitTags('#JJK'), [{ tag: 'jjk', text: '#JJK' }]);
+  assert.deepEqual(splitTags('rien ici'), [{ text: 'rien ici' }]);
 });

@@ -55,7 +55,7 @@ export async function GET(request: Request) {
             admin
               .from('community_comments')
               .select(
-                'kind, body, spoiler, created_at, edited_at, deleted_at, removed, parent_id, target:community_targets(kind, title, season, episode)',
+                'kind, body, photos, tags, spoiler, created_at, edited_at, deleted_at, removed, parent_id, target:community_targets(kind, title, season, episode)',
               )
               .eq('author_id', user.id)
               .order('created_at'),

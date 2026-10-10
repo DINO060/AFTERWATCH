@@ -8,7 +8,7 @@ import { PGlite } from '@electric-sql/pglite';
 const migration = (name) =>
   fs.readFileSync(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8');
 const id = (n) => `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const [A, B, C, MOD, E, F, G, H, I, J] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(id);
+const [A, B, C, MOD, E, F, G, H, I, J, K, L, N, P] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map(id);
 const db = new PGlite();
 
 async function as(user, query, params = []) {
@@ -45,6 +45,22 @@ test.before(async () => {
       as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     grant usage on schema auth to anon, authenticated, service_role;
     grant usage on schema public to anon, authenticated, service_role;
+    -- Just enough of Supabase Storage for the photo rules.
+    create schema storage;
+    create table storage.buckets (
+      id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]
+    );
+    create table storage.objects (
+      id uuid primary key default gen_random_uuid(), bucket_id text, name text,
+      owner_id text default nullif(current_setting('request.jwt.claim.sub', true), ''),
+      created_at timestamptz default now()
+    );
+    alter table storage.objects enable row level security;
+    create function storage.foldername(name text) returns text[] language sql immutable
+      as $$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
+    grant usage on schema storage to anon, authenticated, service_role;
+    grant select, insert, delete on storage.objects to authenticated;
+    grant select on storage.buckets to service_role;
   `);
   for (const name of [
     '202610070002_assistant_usage.sql',
@@ -52,10 +68,11 @@ test.before(async () => {
     '202610080002_community.sql',
     '202610090001_community_hub.sql',
     '202610100001_community_v2.sql',
+    '202610110001_community_threads.sql',
   ])
     await db.exec(migration(name));
   await db.exec(
-    `insert into auth.users (id) values ${[A, B, C, MOD, E, F, G, H, I, J].map((u) => `('${u}')`).join(', ')}`,
+    `insert into auth.users (id) values ${[A, B, C, MOD, E, F, G, H, I, J, K, L, N, P].map((u) => `('${u}')`).join(', ')}`,
   );
   await db.exec(`insert into public.community_moderators (user_id) values ('${MOD}')`);
   for (const [user, name] of [
@@ -67,6 +84,10 @@ test.before(async () => {
     [G, 'gina'],
     [H, 'hugo'],
     [I, 'ines'],
+    [K, 'kim'],
+    [L, 'leo'],
+    [N, 'nia'],
+    [P, 'pablo'],
   ])
     await value(user, 'set_username', '$1', [name]);
 });
@@ -506,4 +527,145 @@ test('tes discussions and à découvrir', async () => {
     JSON.stringify([{ kind: 'anime', source: 'kitsu', sourceId: '46474' }]),
   ]);
   assert.ok(!known.some((w) => w.sourceId === '46474'), 'works already in the list are left out');
+});
+
+// ---------- Community, X / Threads style ----------
+const photo = (user, n, w = 1200, h = 800) => ({
+  path: `${user}/00000000-0000-4000-8000-${String(n).padStart(12, '0')}.webp`,
+  w,
+  h,
+});
+const publish = (user, target, body, o = {}) =>
+  value(user, 'community_publish', '$1, $2, $3, $4, $5, $6, $7, $8', [
+    target,
+    o.parent ?? null,
+    o.kind ?? 'debrief',
+    body,
+    o.spoiler ?? 'none',
+    o.score ?? null,
+    o.tags ?? [],
+    JSON.stringify(o.photos ?? []),
+  ]);
+const publishSql = (args) => rpc('community_publish', args);
+const timeline = (user, o = {}) =>
+  value(user, 'community_timeline', '$1, $2, $3, $4, $5', [
+    o.kind ?? null,
+    o.tag ?? null,
+    JSON.stringify(o.works ?? []),
+    o.offset ?? 0,
+    o.limit ?? 40,
+  ]);
+let withPhotos;
+
+test('photos go only into the member’s own folder', async () => {
+  const insert = `insert into storage.objects (bucket_id, name) values ('community-photos', $1)`;
+  await as(K, insert, [photo(K, 1).path]);
+  await rejects(K, insert, [photo(L, 1).path], /row-level security/);
+  await rejects(K, insert, [`${K}/../escape.png`], /row-level security/);
+  const bucket = await one(
+    'service',
+    `select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'community-photos'`,
+  );
+  assert.equal(bucket.public, true);
+  assert.equal(Number(bucket.file_size_limit), 2097152);
+  assert.deepEqual(bucket.allowed_mime_types, ['image/webp', 'image/jpeg']);
+});
+
+test('a post can carry up to 4 photos of its author, each used once', async () => {
+  withPhotos = await publish(K, T2, 'Regardez ce plan #Toei #Gojo', {
+    photos: [photo(K, 1), photo(K, 2, 800, 1200)],
+    tags: ['toei', 'gojo', 'absent'],
+  });
+  assert.deepEqual(
+    withPhotos.photos.map((p) => p.h),
+    [800, 1200],
+  );
+  assert.deepEqual([...withPhotos.tags].sort(), ['gojo', 'toei'], 'only the tags written in the text');
+  const args = `$1, null, 'debrief', 'x', 'none', null, '{}', $2`;
+  await rejects(K, publishSql(args), [T2, JSON.stringify([photo(L, 3)])], /invalid_photos/);
+  await rejects(
+    K,
+    publishSql(args),
+    [T2, JSON.stringify([1, 2, 3, 4, 5].map((n) => photo(K, 10 + n)))],
+    /invalid_photos/,
+  );
+  await rejects(K, publishSql(args), [T2, JSON.stringify([photo(K, 1)])], /invalid_photos/);
+  await rejects(
+    K,
+    publishSql(args),
+    [T2, JSON.stringify([{ path: photo(K, 20).path, w: 0, h: 10 }])],
+    /invalid_photos/,
+  );
+  const only = await publish(K, T2, '', { photos: [photo(K, 3)] });
+  assert.equal(only.body, '', 'photos alone are a post');
+  await rejects(K, publishSql(`$1, null, 'debrief', '  ', 'none', null, '{}', '[]'`), [T2], /invalid_body/);
+});
+
+test('spoilers keep no #tags; replies and recommendations go through the same door', async () => {
+  const spoiler = await publish(L, T2, 'La fin #Gojo', {
+    spoiler: 'episode',
+    tags: ['gojo'],
+    photos: [photo(L, 1)],
+  });
+  assert.deepEqual(spoiler.tags, []);
+  const reply = await publish(L, T2, 'Grave #Gojo', { parent: withPhotos.id, tags: ['gojo'] });
+  assert.equal(reply.parentId, withPhotos.id);
+  assert.equal(reply.rating, null, 'replies never show a score');
+  await rejects(
+    L,
+    publishSql(`$1, $2, 'reco', 'x', 'none', null, '{}', '[]'`),
+    [T2, withPhotos.id],
+    /invalid_parent/,
+  );
+  await rejects(L, publishSql(`$1, null, 'reco', 'x', 'none', 8, '{}', '[]'`), [T2], /invalid_parent/);
+  await rejects(L, publishSql(`$1, null, 'debrief', 'x', 'none', 8, '{}', '[]'`), [T2], /invalid_score/);
+  const reco = await publish(L, FRIEREN, 'À voir #Frieren', { kind: 'reco', score: 8, tags: ['frieren'] });
+  assert.equal(reco.kind, 'reco');
+  assert.equal(reco.rating, 8);
+  await rejects(
+    L,
+    publishSql(`$1, null, 'reco', $2, 'none', null, '{}', '[]'`),
+    [FRIEREN, 'x'.repeat(501)],
+    /invalid_body/,
+  );
+});
+
+test('the timeline: #tag filter, and spoiler photos stay hidden while protection is on', async () => {
+  const gojo = await timeline(N, { tag: 'Gojo' });
+  assert.deepEqual(
+    gojo.items.map((i) => i.id),
+    [withPhotos.id],
+    'top-level, non-spoiler posts with the tag',
+  );
+  const all = await timeline(N);
+  const hidden = all.items.find((i) => i.spoiler !== 'none' && i.photoCount > 0);
+  assert.ok(hidden, 'the spoiler with a photo is listed');
+  assert.equal(hidden.body, null);
+  assert.deepEqual(hidden.photos, [], 'its photo is not sent');
+  assert.equal(hidden.photoCount, 1, 'only how many');
+  assert.equal(all.items.find((i) => i.id === withPhotos.id).photos.length, 2);
+  const revealed = await value(N, 'community_reveal', '$1', [[hidden.id]]);
+  assert.equal(revealed[hidden.id].photos.length, 1);
+  assert.equal(revealed[hidden.id].body, 'La fin #Gojo');
+  await rejects(N, rpc('community_timeline', `null, 'deux mots', '[]', 0, 20`), [], /invalid_kind/);
+});
+
+test('trends count members, not posts, and never spoilers', async () => {
+  const before = await value(N, 'community_trending', '8', []);
+  assert.ok(!before.some((t) => t.tag === 'toei'), 'one member is not a trend');
+  await publish(N, T2, 'Toei en forme #Toei', { tags: ['toei'] });
+  const toei = (await value(N, 'community_trending', '8', [])).find((t) => t.tag === 'toei');
+  assert.equal(toei.members, 2);
+  await publish(P, T2, 'Chut #Secret', { spoiler: 'episode', tags: ['secret'] });
+  await publish(N, T2, 'Chut aussi #Secret', { spoiler: 'episode', tags: ['secret'] });
+  assert.ok(!(await value(N, 'community_trending', '8', [])).some((t) => t.tag === 'secret'));
+});
+
+test('a deleted post loses its photos and tags', async () => {
+  await value(K, 'community_delete_comment', '$1', [withPhotos.id]);
+  const row = await one('service', 'select photos, tags, body from public.community_comments where id = $1', [
+    withPhotos.id,
+  ]);
+  assert.deepEqual(row, { photos: [], tags: [], body: '' });
+  assert.equal((await timeline(N, { tag: 'gojo' })).items.length, 0);
 });

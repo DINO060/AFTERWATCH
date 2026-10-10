@@ -6,6 +6,7 @@ import { titleStatus } from './assistant/sources';
 import { createSupabaseAdminClient } from './supabase/admin';
 import type { Lang } from './i18n';
 import {
+  PHOTO_BUCKET,
   refProblem,
   type CommunitySource,
   type EpisodeGuide,
@@ -35,7 +36,8 @@ export type CommunityErrorKey =
   | 'comment_not_found'
   | 'invalid_action'
   | 'invalid_kind'
-  | 'invalid_works';
+  | 'invalid_works'
+  | 'invalid_photos';
 export class CommunityFailure extends Error {
   constructor(
     public key: CommunityErrorKey,
@@ -74,6 +76,7 @@ export function fromDatabase(error: { message?: string; code?: string }): Commun
     'invalid_action',
     'invalid_kind',
     'invalid_works',
+    'invalid_photos',
   ];
   return known.includes(key) ? new CommunityFailure(key, STATUS[key] ?? 400) : null;
 }
@@ -214,6 +217,40 @@ export async function ensureTarget(
   });
   if (saveError || typeof id !== 'string') throw new Error(`Target save failed (${saveError?.code})`);
   return { id, ...ref, title, poster, backdrop, year };
+}
+
+/** The photo files of a post, read before it is deleted so the files can go too. */
+export async function photosOfPost(commentId: string): Promise<string[]> {
+  const admin = createSupabaseAdminClient();
+  if (!admin) return [];
+  const { data } = await admin.from('community_comments').select('photos').eq('id', commentId).maybeSingle();
+  const photos = (data?.photos ?? []) as { path?: unknown }[];
+  return photos.map((p) => p.path).filter((p): p is string => typeof p === 'string');
+}
+
+/** Deletes photo files. A failure only leaves an unused file behind, so it never blocks the action. */
+export async function removePhotoFiles(paths: string[]) {
+  if (!paths.length) return;
+  const admin = createSupabaseAdminClient();
+  const { error } = (await admin?.storage.from(PHOTO_BUCKET).remove(paths)) ?? { error: null };
+  if (error) console.error('community_photo_remove_failed', error.message);
+}
+
+/**
+ * Every photo of a member, before their account is deleted: Supabase refuses to delete an account
+ * that still owns files.
+ */
+export async function removeMemberPhotos(userId: string) {
+  const admin = createSupabaseAdminClient();
+  if (!admin) return;
+  const bucket = admin.storage.from(PHOTO_BUCKET);
+  for (let round = 0; round < 50; round++) {
+    const { data, error } = await bucket.list(userId, { limit: 100 });
+    if (error) throw new Error(`Photo list failed (${error.message})`);
+    if (!data?.length) return;
+    const { error: removeError } = await bucket.remove(data.map((f) => `${userId}/${f.name}`));
+    if (removeError) throw new Error(`Photo removal failed (${removeError.message})`);
+  }
 }
 
 /** What the episode picker can offer: a number for anime, seasons for series, nothing for the rest. */

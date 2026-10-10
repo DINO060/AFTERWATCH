@@ -2,12 +2,14 @@
 import { useEffect, useState } from 'react';
 import { Ban, Check, LoaderCircle, ShieldCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Spoiler, TargetRef } from '@/lib/community';
+import type { Photo, Spoiler, TargetRef } from '@/lib/community';
 import { useI18n } from './i18n-provider';
+import { PhotoGrid } from './post-ui';
 
 type Item = {
   commentId: string;
   body: string;
+  photos?: Photo[];
   spoiler: Spoiler;
   createdAt: string;
   author: string | null;
@@ -143,7 +145,8 @@ export default function ModerationView({ onOpen }: { onOpen: (ref: TargetRef) =>
                         )}
                   </span>
                 )}
-                <p className="dx-body">{item.body || c.deleted}</p>
+                <p className="dx-body">{item.body || (item.photos?.length ? '' : c.deleted)}</p>
+                <PhotoGrid photos={item.photos ?? []} />
                 {item.details.length > 0 && (
                   <ul className="dx-case-details">
                     {item.details.map((d, i) => (
