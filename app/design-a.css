@@ -914,6 +914,38 @@ h1 {
     margin-right: 0;
   }
 }
+/* The smallest phones (320px): the photo without its arrow, and slightly smaller buttons. */
+@media (max-width: 350px) {
+  .site-header .brand-link {
+    font-size: 18px;
+  }
+  .site-header .search-toggle,
+  .site-header .pill-btn.ai-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .site-header .lang-toggle {
+    height: 40px;
+  }
+  .site-header .lang-toggle button {
+    padding: 0 10px;
+  }
+  .site-header .account-trigger {
+    height: 40px;
+    padding: 0 2px;
+  }
+  .site-header .account-trigger svg {
+    display: none;
+  }
+  .site-header .account-trigger .avatar-badge {
+    width: 34px;
+    height: 34px;
+  }
+  .bottom-nav button span {
+    font-size: 10px;
+    letter-spacing: -0.1px;
+  }
+}
 
 /* ---------- Catalog page: same pills and search look as the home page ---------- */
 .catalog-tabs [data-slot='tabs-list'] {
