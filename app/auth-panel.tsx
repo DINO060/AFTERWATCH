@@ -32,6 +32,7 @@ import type { Messages } from '@/lib/i18n';
 import { legalPaths } from '@/lib/legal';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { CaptchaBox, captchaEnabled } from './captcha';
+import { GoogleButton } from './google-button';
 import { useI18n } from './i18n-provider';
 
 // Messages are kept as keys so they follow a language switch while on screen.
@@ -168,6 +169,8 @@ export function AuthPanel({
   const [message, setMessage] = useState<AuthText | ''>('');
   const [error, setError] = useState<AuthText | ''>('');
   const [sent, setSent] = useState<Sent | null>(null);
+  // Google's own button; the classic redirect stays as a fallback when Google's script cannot load.
+  const [googleFallback, setGoogleFallback] = useState(false);
   // The anti-robot check runs in the background while the form is filled in (it can take ~10 s).
   // Its token is used once per attempt; a click before it is ready waits for it.
   const [captcha, setCaptcha] = useState<string | null>(null);
@@ -397,6 +400,30 @@ export function AuthPanel({
     }
   }
 
+  /** Google's button handed back an ID token: open the session with it. */
+  async function googleIdToken(token: string, nonce: string) {
+    if (busy) return;
+    setBusy('google');
+    setError('');
+    setMessage('');
+    try {
+      const supabase = createSupabaseBrowserClient();
+      if (!supabase) throw new Error('Sign-in unavailable');
+      const { error: authError } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token,
+        nonce,
+      });
+      if (authError) throw authError;
+      // The SIGNED_IN event above refreshes the app.
+    } catch (cause) {
+      console.warn('Afterwatch Google sign-in failed', (cause as { code?: string })?.code || 'unknown');
+      setError('googleUnavailable');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function signOut() {
     if (busy) return;
     setBusy('signout');
@@ -433,10 +460,22 @@ export function AuthPanel({
   );
   const googleButton = googleEnabled && (
     <>
-      <button className="secondary full" type="button" disabled={Boolean(busy)} onClick={connectGoogle}>
-        {spinner('google', <GoogleIcon />)}
-        {t.auth.continueGoogle}
-      </button>
+      {googleFallback ? (
+        <button className="secondary full" type="button" disabled={Boolean(busy)} onClick={connectGoogle}>
+          {spinner('google', <GoogleIcon />)}
+          {t.auth.continueGoogle}
+        </button>
+      ) : (
+        <>
+          <GoogleButton onCredential={googleIdToken} onUnavailable={() => setGoogleFallback(true)} />
+          {busy === 'google' && (
+            <p className="form-hint captcha-hint" role="status">
+              <LoaderCircle className="loading-icon" size={14} />
+              {t.auth.googleSigningIn}
+            </p>
+          )}
+        </>
+      )}
       <p className="auth-divider">
         <span>{t.auth.or}</span>
       </p>

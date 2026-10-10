@@ -983,6 +983,7 @@ const fr = {
     intro:
       'Enregistre ta collection, ta progression et ton planning. Le catalogue reste accessible sans compte.',
     continueGoogle: 'Continuer avec Google',
+    googleSigningIn: 'Connexion avec Google…',
     orEmail: 'Ou reçois un lien de connexion par e-mail :',
     emailLabel: 'Adresse e-mail',
     emailPlaceholder: 'toi@exemple.com',
@@ -2057,6 +2058,7 @@ const en: Messages = {
     signOut: 'Sign out',
     intro: 'Save your collection, progress and schedule. The catalog stays open without an account.',
     continueGoogle: 'Continue with Google',
+    googleSigningIn: 'Signing in with Google…',
     orEmail: 'Or get a sign-in link by email:',
     emailLabel: 'Email address',
     emailPlaceholder: 'you@example.com',

@@ -1027,6 +1027,14 @@ h1 {
 .auth-form > .captcha-box:not(.shown) {
   margin-bottom: -14px;
 }
+/* Google's own "Continuer avec Google" button (an iframe Google draws, at most 400px wide). */
+.google-box {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  color-scheme: normal;
+}
+
 /* "Compte créé !" and other "check your e-mails" pop-ups. */
 .sent-dialog[data-slot='dialog-content'] {
   justify-items: center;
