@@ -5,7 +5,6 @@
 // when someone presses play. The video is sent in 6 MB pieces (Supabase's resumable upload), so a
 // weak phone connection resumes instead of starting over, and the progress can be shown.
 // Browser only.
-import * as tus from 'tus-js-client';
 import { PHOTO_BUCKET, VIDEO_BUCKET, VIDEO_MAX_BYTES, VIDEO_MAX_SECONDS, type Video } from './community';
 import type { PreparedPhoto } from './photos';
 import { createSupabaseBrowserClient } from './supabase/browser';
@@ -101,13 +100,17 @@ export async function prepareVideo(file: File): Promise<PreparedVideo> {
 }
 
 /** Sends the video in 6 MB pieces, resuming after a dropped connection; reports from 0 to 1. */
-function sendResumable(
+async function sendResumable(
   file: File,
   path: string,
   token: string,
   url: string,
   onProgress?: (share: number) => void,
 ) {
+  // Loaded here, not with the page: only members sending a video need it.
+  const tus = await import('tus-js-client').catch(() => {
+    throw new VideoFailure('upload');
+  });
   return new Promise<void>((resolve, reject) => {
     const upload = new tus.Upload(file, {
       endpoint: `${url.replace(/\/+$/, '')}/storage/v1/upload/resumable`,

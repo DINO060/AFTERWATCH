@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Play,
   Plus,
@@ -71,21 +72,36 @@ import {
 import InstallApp from './install-app';
 import CatalogBrowser, { CatalogDetail } from './catalog-browser';
 import { type CatalogItem, mediaFromCatalog, sameTitle, itemFromMedia } from '@/lib/catalog';
-import AuthPanel, { type AuthMode, type AuthStatus } from './auth-panel';
+import type { AuthMode, AuthStatus } from './auth-panel';
 import { SiteHeader, BottomNav, type View } from './site-header';
 import HomeView from './home-view';
-import NotificationSettings from './notification-settings';
-import AssistantView from './assistant-view';
-import DiscussionView from './discussion-view';
-import ModerationView from './moderation-view';
-import CommunityView from './community-view';
 import { parseRefPath, refFromMedia, refPath, type TargetRef } from '@/lib/community';
-import { AccountGroup, DataSettings, UsernameSettings } from './account-settings';
 import { CONTACT_EMAIL, legalPaths } from '@/lib/legal';
 import { applyOps, type Op } from '@/lib/assistant/ops';
 import type { Feed } from '@/lib/catalog-gateway';
-import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { useI18n } from './i18n-provider';
+
+// Screens that are not on the home page load when they are opened, so the first page starts faster.
+function ViewLoading() {
+  return (
+    <div className="loading-grid" aria-busy="true">
+      <Skeleton className="skeleton-block h-52 w-full" />
+      <Skeleton className="skeleton-block h-64 w-full" />
+    </div>
+  );
+}
+const AuthPanel = dynamic(() => import('./auth-panel'), { loading: ViewLoading });
+const AssistantView = dynamic(() => import('./assistant-view'), { loading: ViewLoading });
+const CommunityView = dynamic(() => import('./community-view'), { loading: ViewLoading });
+const DiscussionView = dynamic(() => import('./discussion-view'), { loading: ViewLoading });
+const ModerationView = dynamic(() => import('./moderation-view'), { loading: ViewLoading });
+const NotificationSettings = dynamic(() => import('./notification-settings'));
+const UsernameSettings = dynamic(() => import('./account-settings').then((m) => m.UsernameSettings), {
+  loading: ViewLoading,
+});
+const AccountGroup = dynamic(() => import('./account-settings').then((m) => m.AccountGroup));
+const DataSettings = dynamic(() => import('./account-settings').then((m) => m.DataSettings));
+
 const formatDate = (
   locale: string,
   date: string,
@@ -378,31 +394,49 @@ export default function WatchApp({
   }, [load]);
   // supabase-js emits SIGNED_IN when it restores a stored session, before /api/auth/user answers.
   // undefined = server check pending: ignore events until then, and re-check instead of reloading so a mismatch cannot loop.
+  // The Supabase library is large and only listens here: it loads once the page is idle.
   useEffect(() => {
-    const client = createSupabaseBrowserClient();
-    if (!client) return;
-    const {
-      data: { subscription },
-    } = client.auth.onAuthStateChange((event, session) => {
-      if (authUserId.current === undefined) return;
-      if (
-        (event === 'SIGNED_IN' || event === 'SIGNED_OUT') &&
-        (session?.user.id || null) !== authUserId.current
-      ) {
-        authUserId.current = undefined;
-        setState(defaults);
-        setLoaded(false);
-        setAiReady(false);
-        setMediaDialog(undefined);
-        setSessionDialog(null);
-        setSettingsOpen(false);
-        setPlanPreview(null);
-        setCatalogDetail(null);
-        setReminder(null);
-        window.setTimeout(() => load(), 0);
-      }
-    });
-    return () => subscription.unsubscribe();
+    let live = true;
+    let stop: (() => void) | undefined;
+    const listen = async () => {
+      const { createSupabaseBrowserClient } = await import('@/lib/supabase/browser');
+      const client = live ? createSupabaseBrowserClient() : null;
+      if (!client) return;
+      const {
+        data: { subscription },
+      } = client.auth.onAuthStateChange((event, session) => {
+        if (authUserId.current === undefined) return;
+        if (
+          (event === 'SIGNED_IN' || event === 'SIGNED_OUT') &&
+          (session?.user.id || null) !== authUserId.current
+        ) {
+          authUserId.current = undefined;
+          setState(defaults);
+          setLoaded(false);
+          setAiReady(false);
+          setMediaDialog(undefined);
+          setSessionDialog(null);
+          setSettingsOpen(false);
+          setPlanPreview(null);
+          setCatalogDetail(null);
+          setReminder(null);
+          window.setTimeout(() => load(), 0);
+        }
+      });
+      stop = () => subscription.unsubscribe();
+    };
+    // Safari on iPhone has no requestIdleCallback.
+    const canIdle = 'requestIdleCallback' in window;
+    const start = () => void listen().catch(() => {});
+    const idle = canIdle
+      ? window.requestIdleCallback(start, { timeout: 4000 })
+      : window.setTimeout(start, 2000);
+    return () => {
+      live = false;
+      if (canIdle) window.cancelIdleCallback(idle);
+      else window.clearTimeout(idle);
+      stop?.();
+    };
   }, [load]);
   const commit = useCallback(
     async (next: WatchState) => {

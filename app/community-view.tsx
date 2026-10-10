@@ -1,5 +1,6 @@
 'use client';
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Check,
   ChevronRight,
@@ -30,7 +31,6 @@ import type { Media } from '@/lib/watch';
 import { Avatar, Loading, Poster, ReportDialog, Switch, api, post, problem } from './community-ui';
 import { useI18n } from './i18n-provider';
 import { PhotoGrid, PostRow, RichText, SpoilerCover, VideoPlayer } from './post-ui';
-import ComposeSheet from './compose-sheet';
 
 type Kind = TargetRef['kind'];
 type WorkKey = Pick<TargetRef, 'kind' | 'source' | 'sourceId'>;
@@ -54,6 +54,8 @@ type Discussions = {
 type Shown = { body: string; photos: Photo[]; video?: Video | null };
 type Revealed = Record<string, Shown>;
 const FRESH = 48 * 3600 * 1000;
+// The writing sheet (photos, video, emojis) loads when it is opened.
+const ComposeSheet = dynamic(() => import('./compose-sheet'));
 const FILTERS: (Kind | null)[] = [null, 'anime', 'series', 'film', 'manga'];
 const keyOf = (r: WorkKey) => `${r.kind}:${r.source}:${r.sourceId}`;
 const workOnly = (r: WorkKey): TargetRef => ({ ...r, season: null, episode: null });

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { preconnect } from 'react-dom';
 import { DM_Sans, Sora } from 'next/font/google';
 import './globals.css';
 import './design-a.css';
@@ -28,6 +29,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const lang = await requestLang();
+  // Posters and banners come from these servers: connect early.
+  preconnect('https://media.kitsu.app');
+  preconnect('https://image.tmdb.org');
   return (
     <html lang={lang} className={`dark ${bodyFont.variable} ${displayFont.variable}`}>
       <body>

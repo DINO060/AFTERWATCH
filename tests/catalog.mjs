@@ -257,15 +257,16 @@ try {
   const film = upcoming.results[0];
   assert.equal(upcoming.source, 'TMDB');
   assert.equal(upcoming.hasNext, true);
-  assert.equal(film.poster, 'https://image.tmdb.org/t/p/w500/p.jpg');
-  assert.equal(film.backdrop, 'https://image.tmdb.org/t/p/w1280/b.jpg');
+  assert.equal(film.poster, 'https://image.tmdb.org/t/p/w342/p.jpg');
+  assert.equal(film.backdrop, 'https://image.tmdb.org/t/p/w780/b.jpg');
+  assert.equal(film.backdropWide, 'https://image.tmdb.org/t/p/w1280/b.jpg');
   assert.equal(film.sourceUrl, 'https://www.themoviedb.org/movie/42');
   assert.equal(film.startDate, '2026-11-20');
   assert.deepEqual(film.catalog.genres, ['Drame']);
   assert.equal(film.catalog.score, null, 'a score from 3 votes is hidden');
   const saved = mediaFromCatalog(film);
   assert.ok(
-    !('backdrop' in saved) && !('startDate' in saved) && !('subtitle' in saved),
+    !('backdrop' in saved) && !('backdropWide' in saved) && !('startDate' in saved) && !('subtitle' in saved),
     'display-only fields are not saved',
   );
 

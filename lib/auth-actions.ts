@@ -1,39 +1,43 @@
 import type { AuthError } from '@supabase/supabase-js';
-import { createSupabaseBrowserClient } from './supabase/browser';
 import { cleanDisplayName } from './display-name';
+
+// The Supabase library is large: it loads when an action needs it, not with every page.
+const browserClient = () => import('./supabase/browser').then((m) => m.createSupabaseBrowserClient());
 
 /** Ends the session on the server, then drops the browser client's cached copy. */
 export async function signOut(): Promise<void> {
   const response = await fetch('/api/auth/signout', { method: 'POST' });
   if (!response.ok) throw new Error('Signout failed');
-  await createSupabaseBrowserClient()?.auth.signOut({ scope: 'local' });
+  await (await browserClient())?.auth.signOut({ scope: 'local' });
 }
 
 /** Saves the name the member chose; returns it as stored. Throws RangeError when it is empty. */
 export async function saveDisplayName(value: string): Promise<string> {
   const name = cleanDisplayName(value);
   if (!name) throw new RangeError('Empty display name');
-  const { error } = await client().auth.updateUser({ data: { display_name: name } });
+  const { error } = await (await client()).auth.updateUser({ data: { display_name: name } });
   if (error) throw error;
   return name;
 }
 
-function client() {
-  const supabase = createSupabaseBrowserClient();
+async function client() {
+  const supabase = await browserClient();
   if (!supabase) throw new Error('Sign-in unavailable');
   return supabase;
 }
 const callbackUrl = () => `${window.location.origin}/auth/callback`;
 
 export async function logInWithPassword(email: string, password: string): Promise<void> {
-  const { error } = await client().auth.signInWithPassword({ email: email.trim(), password });
+  const { error } = await (await client()).auth.signInWithPassword({ email: email.trim(), password });
   if (error) throw error;
 }
 
 /** Creates the account; Supabase e-mails a confirmation link before the first log-in. */
 export async function signUpWithPassword(email: string, password: string, name: string): Promise<void> {
   const displayName = cleanDisplayName(name);
-  const { error } = await client().auth.signUp({
+  const { error } = await (
+    await client()
+  ).auth.signUp({
     email: email.trim(),
     password,
     options: { emailRedirectTo: callbackUrl(), data: displayName ? { display_name: displayName } : {} },
@@ -43,14 +47,16 @@ export async function signUpWithPassword(email: string, password: string, name: 
 
 /** Sends a reset link; the callback opens the "new password" form after verifying it. */
 export async function sendPasswordReset(email: string): Promise<void> {
-  const { error } = await client().auth.resetPasswordForEmail(email.trim(), {
+  const { error } = await (
+    await client()
+  ).auth.resetPasswordForEmail(email.trim(), {
     redirectTo: `${callbackUrl()}?next=${encodeURIComponent('/?auth=recovery')}`,
   });
   if (error) throw error;
 }
 
 export async function setPassword(password: string): Promise<void> {
-  const { error } = await client().auth.updateUser({ password });
+  const { error } = await (await client()).auth.updateUser({ password });
   if (error) throw error;
 }
 

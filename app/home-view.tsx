@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   BookOpen,
   BookText,
@@ -42,6 +42,32 @@ function loadFeed(kind: CatalogKind, feed: Feed, lang: Lang): Promise<CatalogPag
   promise.catch(() => feedCache.delete(key));
   return promise;
 }
+/** What a row or the carousel can do; the same object for the page's whole life. */
+type Actions = {
+  add: (item: CatalogItem) => Promise<boolean>;
+  detail: (item: CatalogItem) => void;
+  seeAll: (kind: CatalogKind, feed: Feed) => void;
+};
+
+/** Turns true once the element comes within ~one screen of the viewport, and stays true. */
+function useNear<T extends Element>() {
+  const ref = useRef<T>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || near) return;
+    const watch = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setNear(true);
+      },
+      { rootMargin: '600px 0px' },
+    );
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [near]);
+  return [ref, near] as const;
+}
+
 function useFeed(kind: CatalogKind, feed: Feed, lang: Lang) {
   const [state, setState] = useState<{ page: CatalogPage | null; failed: boolean }>({
     page: null,
@@ -82,12 +108,15 @@ export default function HomeView({
   const feeds = feedsFor(kind, tmdb);
   const heroFeed: Feed = feeds.includes('new') ? 'new' : feeds.includes('airing') ? 'airing' : 'popular';
   const hero = useFeed(kind, heroFeed, lang);
-  const heroItems = hero.page
-    ? [...hero.page.results]
-        .sort((a, b) => Number(Boolean(b.backdrop)) - Number(Boolean(a.backdrop)))
-        .slice(0, 8)
-    : [];
-  const isAdded = (item: CatalogItem) => collection.some((m) => sameTitle(m, item));
+  const heroItems = useMemo(
+    () =>
+      hero.page
+        ? [...hero.page.results]
+            .sort((a, b) => Number(Boolean(b.backdrop)) - Number(Boolean(a.backdrop)))
+            .slice(0, 8)
+        : [],
+    [hero.page],
+  );
   // List entries can lack counts; load the full record first, as the catalog does.
   const addWithDetail = async (item: CatalogItem) => {
     try {
@@ -97,6 +126,20 @@ export default function HomeView({
       return false;
     }
   };
+  // The app redraws often while it loads (account, list…). The rows and the carousel only redraw
+  // when their own data changes: they call the latest actions through this stable object.
+  const latest = useRef<Actions>({ add: addWithDetail, detail: onDetail, seeAll: onSeeAll });
+  useLayoutEffect(() => {
+    latest.current = { add: addWithDetail, detail: onDetail, seeAll: onSeeAll };
+  });
+  const actions = useMemo<Actions>(
+    () => ({
+      add: (item) => latest.current.add(item),
+      detail: (item) => latest.current.detail(item),
+      seeAll: (k, f) => latest.current.seeAll(k, f),
+    }),
+    [],
+  );
 
   return (
     <div className="home">
@@ -119,10 +162,10 @@ export default function HomeView({
           key={`${kind}:${heroFeed}`}
           items={heroItems}
           feed={heroFeed}
-          isAdded={isAdded}
+          collection={collection}
           saving={saving}
-          onAdd={addWithDetail}
-          onDetail={onDetail}
+          onAdd={actions.add}
+          onDetail={actions.detail}
         />
       ) : hero.failed ? null : (
         <Skeleton className="hero-skeleton" />
@@ -135,37 +178,35 @@ export default function HomeView({
           feed={feed}
           lang={lang}
           saving={saving}
-          isAdded={isAdded}
-          onAdd={addWithDetail}
-          onDetail={onDetail}
-          onSeeAll={() => onSeeAll(kind, feed)}
+          collection={collection}
+          actions={actions}
         />
       ))}
     </div>
   );
 }
 
-function FeedRow({
+const FeedRow = memo(function FeedRow({
   kind,
   feed,
   lang,
   saving,
-  isAdded,
-  onAdd,
-  onDetail,
-  onSeeAll,
+  collection,
+  actions,
 }: {
   kind: CatalogKind;
   feed: Feed;
   lang: Lang;
   saving: boolean;
-  isAdded: (item: CatalogItem) => boolean;
-  onAdd: (item: CatalogItem) => Promise<unknown>;
-  onDetail: (item: CatalogItem) => void;
-  onSeeAll: () => void;
+  collection: Media[];
+  actions: Actions;
 }) {
   const { t, locale } = useI18n();
+  const isAdded = (item: CatalogItem) => collection.some((m) => sameTitle(m, item));
   const { page, failed } = useFeed(kind, feed, lang);
+  // The list is fetched right away (it is small), but its cards and covers are only drawn when the
+  // row comes near the screen: the rows further down do not slow the top of the page.
+  const [rowRef, near] = useNear<HTMLElement>();
   const [busy, setBusy] = useState('');
   const title = feedLabel(t, kind, feed);
   const meta = (item: CatalogItem) => {
@@ -183,22 +224,22 @@ function FeedRow({
   const add = async (item: CatalogItem) => {
     setBusy(`${item.catalog.source}:${item.catalog.id}`);
     try {
-      await onAdd(item);
+      await actions.add(item);
     } finally {
       setBusy('');
     }
   };
   return (
-    <section className="feed-row" aria-label={title}>
+    <section className="feed-row" aria-label={title} ref={rowRef}>
       <div className="feed-row-heading">
         <h2>{title}</h2>
-        <button className="ghost-btn small-btn" onClick={onSeeAll}>
+        <button className="ghost-btn small-btn" onClick={() => actions.seeAll(kind, feed)}>
           {t.today.seeAll}
         </button>
       </div>
       {failed ? (
         <p className="inline-note">{t.home.rowError}</p>
-      ) : !page ? (
+      ) : !page || !near ? (
         <div className="feed-row-track" aria-busy="true">
           {Array.from({ length: 7 }, (_, i) => (
             <div className="row-card" key={i}>
@@ -217,7 +258,7 @@ function FeedRow({
               <article className="row-card" key={key}>
                 <button
                   className="row-cover"
-                  onClick={() => onDetail(item)}
+                  onClick={() => actions.detail(item)}
                   aria-label={t.media.viewDetailsOf(item.title)}
                 >
                   <CatalogPoster item={item} />
@@ -247,4 +288,4 @@ function FeedRow({
       )}
     </section>
   );
-}
+});

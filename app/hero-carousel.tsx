@@ -1,24 +1,26 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Info, LoaderCircle, Pause, Play, Plus } from 'lucide-react';
-import type { CatalogItem } from '@/lib/catalog';
+import { sameTitle, type CatalogItem } from '@/lib/catalog';
 import type { Feed } from '@/lib/catalog-gateway';
+import type { Media } from '@/lib/watch';
 import { useI18n } from './i18n-provider';
 
 const AUTOPLAY_MS = 7000;
 const SWIPE_PX = 50;
 
-export function HeroCarousel({
+// Redraws only when its own data changes (see HomeView).
+export const HeroCarousel = memo(function HeroCarousel({
   items,
   feed,
-  isAdded,
+  collection,
   saving,
   onAdd,
   onDetail,
 }: {
   items: CatalogItem[];
   feed: Feed;
-  isAdded: (item: CatalogItem) => boolean;
+  collection: Media[];
   saving: boolean;
   onAdd: (item: CatalogItem) => Promise<unknown>;
   onDetail: (item: CatalogItem) => void;
@@ -31,6 +33,9 @@ export function HeroCarousel({
   const [adding, setAdding] = useState('');
   // Wide images that failed to load (some sources list ones that do not exist): use the cover instead.
   const [brokenBackdrops, setBrokenBackdrops] = useState<Set<string>>(() => new Set());
+  // The slides are stacked, so the browser would fetch every image at once: only the shown slide's
+  // image loads first, then its neighbours once it has arrived.
+  const [firstShown, setFirstShown] = useState(false);
   const swipe = useRef<{ x: number; y: number } | null>(null);
   const count = items.length;
   const current = Math.min(index, Math.max(count - 1, 0));
@@ -99,9 +104,12 @@ export function HeroCarousel({
       <div className="hero-track" aria-live={paused ? 'polite' : 'off'}>
         {items.map((item, i) => {
           const key = `${item.catalog.source}:${item.catalog.id}`;
-          const added = isAdded(item);
+          const added = collection.some((m) => sameTitle(m, item));
           const active = i === current;
-          const useBackdrop = Boolean(item.backdrop) && !brokenBackdrops.has(key);
+          const near =
+            active || (firstShown && (i === (current + 1) % count || i === (current - 1 + count) % count));
+          const wide = item.backdropWide || item.backdrop;
+          const useBackdrop = Boolean(wide) && !brokenBackdrops.has(key);
           return (
             <article
               key={key}
@@ -111,16 +119,18 @@ export function HeroCarousel({
               aria-hidden={!active}
               inert={!active}
             >
-              {(useBackdrop || item.poster) && (
+              {near && (useBackdrop || item.poster) && (
                 <img
                   className={`hero-bg ${useBackdrop ? '' : 'from-poster'}`}
-                  src={useBackdrop ? item.backdrop : item.poster}
+                  src={useBackdrop ? wide : item.poster}
+                  onLoad={() => setFirstShown(true)}
                   onError={() => {
+                    setFirstShown(true);
                     if (useBackdrop) setBrokenBackdrops((old) => new Set(old).add(key));
                   }}
                   alt=""
                   referrerPolicy="no-referrer"
-                  loading={i === 0 ? 'eager' : 'lazy'}
+                  fetchPriority={active && !firstShown ? 'high' : 'auto'}
                   draggable={false}
                 />
               )}
@@ -198,4 +208,4 @@ export function HeroCarousel({
       )}
     </section>
   );
-}
+});

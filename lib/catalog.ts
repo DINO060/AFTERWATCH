@@ -25,8 +25,10 @@ export type CatalogItem = {
   total: number;
   duration: number;
   subtitle: string;
-  /** Wide image for the home carousel; display only, never saved. */
+  /** Wide image, sized for cards and banners; display only, never saved. */
   backdrop?: string;
+  /** The same wide image in full size, for the home carousel; display only, never saved. */
+  backdropWide?: string;
   /** First release date (YYYY-MM-DD) when the source gives one; display only. */
   startDate?: string;
 };
@@ -255,8 +257,10 @@ export function normalizeKitsu(resource: any, kind: 'anime' | 'manga', included:
   return {
     title: String(x.canonicalTitle || x.titles?.en || x.titles?.en_jp || 'Sans titre').slice(0, 180),
     kind,
-    poster: x.posterImage?.large || x.posterImage?.medium || x.posterImage?.original || '',
-    backdrop: x.coverImage?.large || x.coverImage?.original || '',
+    // Cards are at most ~390px wide; Kitsu's "large" sizes are much bigger than needed.
+    poster: x.posterImage?.medium || x.posterImage?.large || x.posterImage?.original || '',
+    backdrop: x.coverImage?.small || x.coverImage?.large || x.coverImage?.original || '',
+    backdropWide: x.coverImage?.large || x.coverImage?.original || undefined,
     startDate: isoDay(x.startDate),
     sourceUrl: `https://kitsu.app/${kind}/${encodeURIComponent(x.slug || resource.id)}`,
     total: (kind === 'manga' ? chapters : episodes) || 0,
@@ -323,8 +327,9 @@ export function normalizeTmdb(
       (film ? x.title : x.name) || (film ? x.original_title : x.original_name) || 'Sans titre',
     ).slice(0, 180),
     kind,
-    poster: x.poster_path ? `https://image.tmdb.org/t/p/w500${x.poster_path}` : '',
-    backdrop: x.backdrop_path ? `https://image.tmdb.org/t/p/w1280${x.backdrop_path}` : '',
+    poster: x.poster_path ? `https://image.tmdb.org/t/p/w342${x.poster_path}` : '',
+    backdrop: x.backdrop_path ? `https://image.tmdb.org/t/p/w780${x.backdrop_path}` : '',
+    backdropWide: x.backdrop_path ? `https://image.tmdb.org/t/p/w1280${x.backdrop_path}` : undefined,
     startDate: date,
     sourceUrl: `https://www.themoviedb.org/${film ? 'movie' : 'tv'}/${x.id}`,
     total: film ? 1 : episodes || 0,
