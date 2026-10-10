@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Check,
+  ChevronDown,
   Clapperboard,
   ImagePlus,
   LoaderCircle,
@@ -21,6 +22,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   PHOTOS_MAX,
   POST_MAX,
@@ -131,6 +139,33 @@ export default function DiscussionView({
   const files = useRef<HTMLInputElement>(null);
   const videoFile = useRef<HTMLInputElement>(null);
   const listHead = useRef<HTMLDivElement>(null);
+  // Phones: the reply bar is one line; its tools (photos, video, emojis, spoiler) open when it is
+  // touched, and close again when the reader taps elsewhere with nothing written.
+  const [composeOpen, setComposeOpen] = useState(false);
+  const composer = useRef<HTMLFormElement>(null);
+  const composeEmpty = useRef(true);
+  const nothingWritten =
+    !draft.body.trim() &&
+    draft.mode === 'new' &&
+    photos.items.length === 0 &&
+    !clip.item &&
+    progress === null &&
+    !sending;
+  useEffect(() => {
+    composeEmpty.current = nothingWritten;
+  }, [nothingWritten]);
+  useEffect(() => {
+    if (!composeOpen) return;
+    const away = (event: PointerEvent) => {
+      const el = event.target as Element | null;
+      if (!el || composer.current?.contains(el)) return;
+      // Menus and pickers opened from the bar live outside it.
+      if (el.closest('[data-radix-popper-content-wrapper], [role="dialog"], [role="alertdialog"]')) return;
+      if (composeEmpty.current) setComposeOpen(false);
+    };
+    document.addEventListener('pointerdown', away);
+    return () => document.removeEventListener('pointerdown', away);
+  }, [composeOpen]);
   const refKey = refPath(refTarget);
   const workKey = refPath(workOf(refTarget));
 
@@ -230,6 +265,12 @@ export default function DiscussionView({
       : refTarget.kind === 'series'
         ? c.theSeriesEpisode(refTarget.season ?? 0, refTarget.episode)
         : c.theEpisode(refTarget.episode);
+  const subtitle =
+    refTarget.episode === null
+      ? [t.kinds[refTarget.kind], target?.year].filter(Boolean).join(' · ')
+      : refTarget.kind === 'series'
+        ? c.seasonEpisodeTitle(refTarget.season ?? 0, refTarget.episode)
+        : c.episodeTitle(refTarget.episode);
   const count = thread?.total ?? summary?.debriefs ?? 0;
 
   const share = async () => {
@@ -250,9 +291,21 @@ export default function DiscussionView({
       <button className="dx-bar-btn" aria-label={c.back} onClick={onBack}>
         <ArrowLeft size={20} />
       </button>
+      {target && <Poster src={target.poster || ''} className="dx-bar-poster" />}
       <div className="dx-bar-title">
-        <strong>{c.discussion}</strong>
-        {signedIn && summary && <span>{c.messagesCount(count)}</span>}
+        <strong>{target?.title ?? c.discussion}</strong>
+        {signedIn && target && (
+          <span>
+            <span className="dx-bar-sub">
+              {summary && count > 0 ? `${subtitle} · ${c.messagesCount(count)}` : subtitle}
+            </span>
+            {seen === true && (
+              <span className="dx-bar-seen" aria-label={refTarget.episode === null ? c.seen : c.episodeSeen}>
+                <Check size={11} strokeWidth={3.2} aria-hidden />
+              </span>
+            )}
+          </span>
+        )}
       </div>
       {signedIn ? (
         <button className="dx-bar-btn" aria-label={c.share} onClick={() => share()}>
@@ -600,12 +653,6 @@ export default function DiscussionView({
     </PostRow>
   );
 
-  const subtitle =
-    refTarget.episode === null
-      ? [t.kinds[refTarget.kind], target?.year].filter(Boolean).join(' · ')
-      : refTarget.kind === 'series'
-        ? c.seasonEpisodeTitle(refTarget.season ?? 0, refTarget.episode)
-        : c.episodeTitle(refTarget.episode);
   const levels: Spoiler[] = refTarget.episode === null ? ['none', 'episode'] : ['none', 'episode', 'later'];
   const length = draft.body.trim().length;
   const canSend =
@@ -616,20 +663,6 @@ export default function DiscussionView({
   return (
     <div className="dx">
       {bar}
-      <section className="dx-work">
-        <Poster src={target?.poster || ''} className="dx-work-poster" />
-        <div className="dx-work-text">
-          <h1>{target?.title ?? '…'}</h1>
-          {subtitle && <p>{subtitle}</p>}
-          {seen === true && (
-            <span className="dx-seen">
-              <Check size={13} strokeWidth={3} aria-hidden />
-              {refTarget.episode === null ? c.seen : c.episodeSeen}
-            </span>
-          )}
-        </div>
-      </section>
-
       {error ? (
         <div className="notice danger dx-error" role="alert">
           {error}
@@ -669,57 +702,67 @@ export default function DiscussionView({
               </div>
               <strong className="dx-rate-value">{summary.myScore ?? '–'}</strong>
             </div>
-            <div className="dx-rate-row">
-              <span className="dx-rate-label">{c.reactionShort}</span>
-              <div className="dx-react-row" role="group" aria-label={c.yourReaction}>
-                {TARGET_REACTIONS.map((r) => {
-                  const n = summary.targetReactions[r.key] || 0;
-                  const mine = summary.myTargetReaction === r.key;
-                  return (
-                    <button
-                      key={r.key}
-                      type="button"
-                      className={mine ? 'on' : ''}
-                      aria-pressed={mine}
-                      aria-label={`${c.reactionNames[r.key]}, ${n}`}
-                      onClick={() => reactTarget(r.key)}
-                    >
-                      <span aria-hidden>{r.emoji}</span>
-                      {n}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="dx-react-row" role="group" aria-label={c.yourReaction}>
+              {TARGET_REACTIONS.map((r) => {
+                const n = summary.targetReactions[r.key] || 0;
+                const mine = summary.myTargetReaction === r.key;
+                return (
+                  <button
+                    key={r.key}
+                    type="button"
+                    className={mine ? 'on' : ''}
+                    aria-pressed={mine}
+                    aria-label={n > 0 ? `${c.reactionNames[r.key]}, ${n}` : c.reactionNames[r.key]}
+                    onClick={() => reactTarget(r.key)}
+                  >
+                    <span aria-hidden>{r.emoji}</span>
+                    {n > 0 && n}
+                  </button>
+                );
+              })}
             </div>
             <p className="dx-average">
-              {summary.average !== null
-                ? c
-                    .communityAverage(
-                      Number(summary.average).toLocaleString(locale, {
-                        minimumFractionDigits: 1,
-                        maximumFractionDigits: 1,
-                      }),
-                      summary.verdicts,
-                    )
-                    .split(/(\d+[.,]\d)/)
-                    .map((part, i) => (i === 1 ? <strong key={i}>{part}</strong> : part))
-                : c.fewScores(summary.verdicts)}
+              {summary.verdicts === 0
+                ? refTarget.episode === null
+                  ? c.beFirstWork
+                  : c.beFirstEpisode
+                : summary.average !== null
+                  ? c
+                      .communityAverage(
+                        Number(summary.average).toLocaleString(locale, {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                        }),
+                        summary.verdicts,
+                      )
+                      .split(/(\d+[.,]\d)/)
+                      .map((part, i) => (i === 1 ? <strong key={i}>{part}</strong> : part))
+                  : c.fewScores(summary.verdicts)}
             </p>
           </section>
 
-          <div className="dx-tabs" role="tablist" aria-label={c.sortBy} ref={listHead}>
-            {(['top', 'recent'] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={sort === s}
-                className={sort === s ? 'on' : ''}
-                onClick={() => setSort(s)}
-              >
-                <span>{s === 'top' ? c.sortTop : c.sortRecent}</span>
-              </button>
-            ))}
+          <div className={`dx-list-head${count > 0 ? '' : ' empty'}`} ref={listHead}>
+            {count > 0 && <h2>{c.messagesCount(count)}</h2>}
+            {count >= 3 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="dx-sort"
+                    aria-label={`${c.sortBy} : ${sort === 'top' ? c.sortTop : c.sortRecent}`}
+                  >
+                    {sort === 'top' ? c.sortTop : c.sortRecent}
+                    <ChevronDown size={15} aria-hidden />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="dx-sort-menu">
+                  <DropdownMenuRadioGroup value={sort} onValueChange={(v) => setSort(v as 'top' | 'recent')}>
+                    <DropdownMenuRadioItem value="top">{c.sortTop}</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="recent">{c.sortRecent}</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
           {fresh > 0 && (
             <button className="dx-fresh" onClick={showFresh}>
@@ -779,7 +822,11 @@ export default function DiscussionView({
       )}
 
       {target && (
-        <form className="dx-composer" onSubmit={submit}>
+        <form
+          ref={composer}
+          className={`dx-composer${composeOpen || !nothingWritten ? ' open' : ''}`}
+          onSubmit={submit}
+        >
           {(draft.mode !== 'new' || length > POST_MAX - 200 || progress !== null) && (
             <div className="dx-composer-context">
               <span>
@@ -823,6 +870,7 @@ export default function DiscussionView({
               maxLength={POST_MAX + 200}
               aria-label={draft.mode === 'reply' ? c.replyPlaceholder : c.placeholder}
               placeholder={draft.mode === 'reply' ? c.replyPlaceholder : c.placeholder}
+              onFocus={() => setComposeOpen(true)}
               onChange={(e) => {
                 setDraft({ ...draft, body: e.target.value });
                 resizeField();

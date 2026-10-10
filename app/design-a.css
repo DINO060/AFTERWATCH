@@ -2875,8 +2875,7 @@ h1 {
   text-overflow: ellipsis;
   color: var(--foreground);
 }
-.cv-tabs,
-.dx-tabs {
+.cv-tabs {
   position: sticky;
   top: var(--header-h);
   z-index: 6;
@@ -2892,8 +2891,7 @@ h1 {
 .cv-tabs::-webkit-scrollbar {
   display: none;
 }
-.cv-tabs button,
-.dx-tabs button {
+.cv-tabs button {
   flex: 1 0 auto;
   display: flex;
   justify-content: center;
@@ -2905,23 +2903,19 @@ h1 {
   font-size: 14.5px;
   white-space: nowrap;
 }
-.cv-tabs button span,
-.dx-tabs button span {
+.cv-tabs button span {
   display: inline-flex;
   align-items: center;
   border-bottom: 3px solid transparent;
 }
-.cv-tabs button.on,
-.dx-tabs button.on {
+.cv-tabs button.on {
   color: var(--foreground);
   font-weight: 700;
 }
-.cv-tabs button.on span,
-.dx-tabs button.on span {
+.cv-tabs button.on span {
   border-bottom-color: var(--primary);
 }
-.cv-tabs button:hover,
-.dx-tabs button:hover {
+.cv-tabs button:hover {
   background: rgba(255, 255, 255, 0.03);
 }
 .cv-compose {
@@ -3468,6 +3462,8 @@ h1 {
 
 /* ---------- A discussion (an episode or a work) ---------- */
 .dx {
+  display: flex;
+  flex-direction: column;
   max-width: 640px;
   min-height: calc(100dvh - var(--header-h));
   margin: -28px auto 0;
@@ -3480,9 +3476,9 @@ h1 {
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 56px;
-  padding: 0 8px;
+  gap: 8px;
+  height: 64px;
+  padding: 0 6px 0 4px;
   border-bottom: 1px solid var(--border);
   background: rgba(13, 14, 18, 0.92);
   backdrop-filter: blur(12px);
@@ -3501,72 +3497,59 @@ h1 {
 .dx-bar-btn:hover {
   background: var(--secondary);
 }
+/* The work's poster and title live in the bar, so the messages start higher. */
+.dx-bar-poster {
+  flex: none;
+  width: 34px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+}
 .dx-bar-title {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 .dx-bar-title strong {
+  overflow: hidden;
   font-family: var(--font-display), sans-serif;
-  font-size: 17px;
+  font-size: 16px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.dx-bar-title span {
-  font-size: 12px;
+.dx-bar-title > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
   color: var(--muted-foreground);
 }
-.dx-work {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px 10px;
-}
-.dx-work-poster {
-  flex: none;
-  width: 58px;
-  height: 82px;
-  border-radius: 10px;
-  object-fit: cover;
-}
-.dx-work-text {
+.dx-bar-sub {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-.dx-work-text h1 {
-  display: -webkit-box;
-  margin: 0;
   overflow: hidden;
-  font-size: 20px;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.dx-work-text p {
-  margin: 0;
-  font-size: 14px;
-  color: #c9ccd6;
-}
-.dx-seen {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
+/* "Vu": the title or episode is marked watched in the member's list. */
+.dx-bar-seen {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  background: rgba(76, 211, 138, 0.14);
+  background: rgba(76, 211, 138, 0.16);
   color: #7fe0a9;
-  font-size: 12px;
-  font-weight: 700;
 }
 .dx-picker {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 0 16px 10px;
+  padding: 8px 16px 10px;
 }
 .dx-picker .dx-chip {
   height: 32px;
@@ -3606,9 +3589,9 @@ h1 {
 .dx-rate {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   margin: 0 16px;
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--card);
@@ -3641,7 +3624,7 @@ h1 {
 }
 .dx-mini-score span {
   width: 100%;
-  height: 12px;
+  height: 10px;
   border-radius: 3px;
   background: #2f3340;
   transition: background 0.15s;
@@ -3671,8 +3654,8 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 34px;
+  gap: 6px;
+  height: 44px;
   border: 1px solid #2f3340;
   border-radius: 999px;
   background: transparent;
@@ -3693,10 +3676,49 @@ h1 {
 .dx-average strong {
   color: var(--foreground);
 }
-.dx-tabs {
-  top: calc(var(--header-h) + 56px);
-  margin-top: 12px;
-  scroll-margin-top: calc(var(--header-h) + 56px);
+/* "38 messages" and, from 3 messages, how they are sorted. Stays under the bar while reading. */
+.dx-list-head {
+  position: sticky;
+  top: calc(var(--header-h) + 64px);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 0 6px 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(13, 14, 18, 0.92);
+  backdrop-filter: blur(12px);
+  scroll-margin-top: calc(var(--header-h) + 64px);
+}
+.dx-list-head.empty {
+  min-height: 0;
+  border-bottom: 0;
+}
+.dx-list-head h2 {
+  margin: 0;
+  font-family: var(--font-body), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.dx-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.dx-sort:hover {
+  background: var(--secondary);
 }
 .dx-fresh {
   position: sticky;
@@ -3767,10 +3789,11 @@ h1 {
 .dx-prompts button:hover {
   border-color: var(--primary);
 }
-/* Replying: pinned to the bottom of the screen while reading. */
+/* Replying: pinned to the bottom of the screen while reading, even under a short thread. */
 .dx-composer {
   position: sticky;
   bottom: 0;
+  margin-top: auto;
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -3873,8 +3896,13 @@ h1 {
   padding-left: 34px;
 }
 .dx-composer-tools .px-tool {
-  width: 36px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
+}
+.dx-composer .dx-level {
+  height: 40px;
+  padding: 0 12px;
+  font-size: 12.5px;
 }
 /* Phones: the discussion takes the whole screen, like an app (its own back button, no menus). */
 @media (max-width: 900px) {
@@ -3894,11 +3922,16 @@ h1 {
   }
   .dx-bar {
     top: 0;
-    height: calc(56px + env(safe-area-inset-top));
+    height: calc(64px + env(safe-area-inset-top));
     padding-top: env(safe-area-inset-top);
   }
-  .dx-tabs {
-    top: calc(56px + env(safe-area-inset-top));
+  .dx-list-head {
+    top: calc(64px + env(safe-area-inset-top));
+    scroll-margin-top: calc(64px + env(safe-area-inset-top));
+  }
+  /* One line until touched: the tools open with the keyboard. */
+  .dx-composer:not(.open) .dx-composer-tools {
+    display: none;
   }
   .dx-fresh {
     top: calc(116px + env(safe-area-inset-top));
