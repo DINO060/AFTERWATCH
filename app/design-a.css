@@ -2577,6 +2577,7 @@ h1 {
 .px-embed-score {
   color: var(--primary);
   font-weight: 700;
+  white-space: nowrap;
 }
 .px-embed-add {
   display: inline-flex;

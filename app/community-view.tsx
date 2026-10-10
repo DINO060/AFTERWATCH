@@ -539,7 +539,12 @@ function FeedPost({
           </button>
           <span className="px-embed-meta">
             {meta}
-            {item.rating !== null && <span className="px-embed-score"> · ★ {item.rating}/10</span>}
+            {item.rating !== null && (
+              <>
+                {' · '}
+                <span className="px-embed-score">★ {item.rating}/10</span>
+              </>
+            )}
           </span>
         </div>
         {inList ? (
