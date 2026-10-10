@@ -433,8 +433,8 @@ export default function ComposeSheet({
             type="button"
             className="px-tool"
             aria-label={m.addPhoto}
-            title={clip.item ? m.photosOrVideo : m.addPhoto}
-            disabled={photos.busy || photos.items.length >= PHOTOS_MAX || !!clip.item}
+            title={m.addPhoto}
+            disabled={photos.busy || photos.items.length >= PHOTOS_MAX}
             onClick={() => files.current?.click()}
           >
             {photos.busy ? <LoaderCircle size={19} className="loading-icon" /> : <ImagePlus size={20} />}
@@ -443,8 +443,8 @@ export default function ComposeSheet({
             type="button"
             className="px-tool"
             aria-label={m.addVideo}
-            title={photos.items.length ? m.photosOrVideo : m.addVideo}
-            disabled={clip.busy || !!clip.item || photos.items.length > 0}
+            title={m.addVideo}
+            disabled={clip.busy || !!clip.item}
             onClick={() => videoFile.current?.click()}
           >
             {clip.busy ? <LoaderCircle size={19} className="loading-icon" /> : <Clapperboard size={20} />}

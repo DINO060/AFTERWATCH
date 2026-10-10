@@ -872,8 +872,8 @@ export default function DiscussionView({
                   type="button"
                   className="px-tool"
                   aria-label={c.compose.addPhoto}
-                  title={clip.item ? c.compose.photosOrVideo : c.compose.addPhoto}
-                  disabled={photos.busy || photos.items.length >= PHOTOS_MAX || !!clip.item}
+                  title={c.compose.addPhoto}
+                  disabled={photos.busy || photos.items.length >= PHOTOS_MAX}
                   onClick={() => files.current?.click()}
                 >
                   {photos.busy ? (
@@ -886,8 +886,8 @@ export default function DiscussionView({
                   type="button"
                   className="px-tool"
                   aria-label={c.compose.addVideo}
-                  title={photos.items.length ? c.compose.photosOrVideo : c.compose.addVideo}
-                  disabled={clip.busy || !!clip.item || photos.items.length > 0}
+                  title={c.compose.addVideo}
+                  disabled={clip.busy || !!clip.item}
                   onClick={() => videoFile.current?.click()}
                 >
                   {clip.busy ? (

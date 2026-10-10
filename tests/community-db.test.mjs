@@ -735,15 +735,12 @@ test('a profile photo: own folder only, needs a username, shown next to posts', 
   );
 });
 
-test('a video: one per post instead of photos, 2 minutes, own folder, used once', async () => {
+test('a video: one per post, with or without photos, 2 minutes, own folder, used once', async () => {
   withVideo = await post(R, T2, 'Le plan final 🔥', { video: video(R, 1) });
   assert.deepEqual(withVideo.video, video(R, 1));
-  await rejects(
-    R,
-    rpc('community_post', postSql),
-    [T2, JSON.stringify([photo(R, 1)]), JSON.stringify(video(R, 2))],
-    /invalid_video/,
-  );
+  const both = await post(R, T2, 'Les deux', { photos: [photo(R, 1), photo(R, 2)], video: video(R, 2) });
+  assert.equal(both.photos.length, 2, 'photos and a video in the same post');
+  assert.equal(both.video.path, file(R, 2, 'mp4'));
   await rejects(
     R,
     rpc('community_post', postSql),

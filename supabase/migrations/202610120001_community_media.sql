@@ -1,4 +1,4 @@
--- Profile photos, and short videos in posts (2 minutes, 100 MB, one per post instead of photos).
+-- Profile photos, and short videos in posts (2 minutes, 100 MB, one per post, with or without photos).
 -- Videos above 50 MB need the Supabase Pro plan, with its upload limit raised to 100 MB.
 -- Run once in the SQL Editor, after 202610110001_community_threads.sql.
 -- Additive: the earlier functions keep working while the new site is being deployed.
@@ -96,7 +96,7 @@ $$;
 revoke all on function public.community_remove_avatar(uuid) from public, anon, authenticated;
 grant execute on function public.community_remove_avatar(uuid) to authenticated;
 
--- ---------- Posts: one video instead of photos ----------
+-- ---------- Posts: one video, alongside up to 4 photos ----------
 alter table public.community_comments
   add column video jsonb check (video is null or jsonb_typeof(video) = 'object');
 alter table public.community_comments drop constraint community_comments_content;
@@ -104,7 +104,6 @@ alter table public.community_comments add constraint community_comments_content 
   (
     deleted_at is null and char_length(body) <= 2000
     and (char_length(body) >= 1 or jsonb_array_length(photos) > 0 or video is not null)
-    and (video is null or jsonb_array_length(photos) = 0)
   )
   or (deleted_at is not null and body = '')
 );
@@ -204,7 +203,7 @@ end;
 $$;
 revoke all on function public.community_clean_video(jsonb, uuid) from public, anon, authenticated;
 
--- Publishing, as community_publish, with a video. A post has photos or a video, not both.
+-- Publishing, as community_publish, with a video: up to 4 photos and one video in the same post.
 create function public.community_post(
   p_target uuid, p_parent uuid, p_kind text, p_body text, p_spoiler text, p_score integer,
   p_tags text[], p_photos jsonb, p_video jsonb
@@ -252,9 +251,6 @@ begin
   end if;
   new_photos := public.community_clean_photos(p_photos, caller_id);
   new_video := public.community_clean_video(p_video, caller_id);
-  if new_video is not null and jsonb_array_length(new_photos) > 0 then
-    raise exception 'invalid_video' using errcode = '22023';
-  end if;
   max_length := case when p_kind = 'reco' then 500 else 2000 end;
   if char_length(clean) > max_length
      or (char_length(clean) = 0 and jsonb_array_length(new_photos) = 0 and new_video is null) then

@@ -1,4 +1,5 @@
-// Short videos for community posts, checked in the browser before anything is sent: MP4 (H.264)
+// Short videos for community posts (one per post, with or without photos), checked in the browser
+// before anything is sent: MP4 (H.264)
 // or WebM, at most 2 minutes and 100 MB. iPhone videos in HEVC are refused because most computers
 // cannot play them. A preview image is taken from the video so the video itself only downloads
 // when someone presses play. The video is sent in 6 MB pieces (Supabase's resumable upload), so a

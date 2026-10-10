@@ -481,7 +481,6 @@ const fr = {
       addVideo: 'Ajouter une vidéo (2 min, 100 Mo)',
       removeVideo: 'Retirer la vidéo',
       videoHint: (seconds: string, size: string) => `Vidéo · ${seconds} s · ${size} Mo`,
-      photosOrVideo: 'Une vidéo ou des photos, pas les deux.',
       sendingVideo: (percent: number) => `Envoi de la vidéo… ${percent} %`,
       videoErrors: {
         notVideo: 'Ce fichier n’est pas une vidéo (MP4 ou WebM).',
@@ -1529,7 +1528,6 @@ const en: Messages = {
       addVideo: 'Add a video (2 min, 100 MB)',
       removeVideo: 'Remove the video',
       videoHint: (seconds: string, size: string) => `Video · ${seconds} s · ${size} MB`,
-      photosOrVideo: 'A video or photos, not both.',
       sendingVideo: (percent: number) => `Sending the video… ${percent}%`,
       videoErrors: {
         notVideo: 'This file isn’t a video (MP4 or WebM).',
