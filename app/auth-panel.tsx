@@ -167,6 +167,12 @@ export function AuthPanel({
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaBroken, setCaptchaBroken] = useState(false);
   const captchaRef = useRef<string | null>(null);
+  // The result of an action ("Compte créé !", an error…) is shown at the bottom of the panel:
+  // bring it into view, it can be below the screen on a computer.
+  const notices = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (message || error) notices.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [message, error]);
   const captchaWaiters = useRef<((token: string) => void)[]>([]);
   const knownUserId = useRef(user?.id || null);
   const authChange = useRef(onAuthChange);
@@ -682,16 +688,18 @@ export function AuthPanel({
           )}
         </>
       )}
-      {message && (
-        <p className="notice" role="status">
-          {t.auth[message]}
-        </p>
-      )}
-      {error && (
-        <p className="notice danger" role="alert">
-          {t.auth[error]}
-        </p>
-      )}
+      <div ref={notices}>
+        {message && (
+          <p className="notice" role="status">
+            {t.auth[message]}
+          </p>
+        )}
+        {error && (
+          <p className="notice danger" role="alert">
+            {t.auth[error]}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

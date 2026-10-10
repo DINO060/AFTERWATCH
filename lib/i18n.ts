@@ -940,7 +940,7 @@ const fr = {
     detailDown: 'La fiche est momentanément indisponible. Réessaie dans un instant.',
   },
   auth: {
-    captchaChecking: 'Vérification anti-robots…',
+    captchaChecking: 'Vérification anti-robots… (ça peut prendre jusqu’à 20 secondes)',
     captchaFailed: 'La vérification anti-robots n’a pas marché. Recharge la page et réessaie.',
     linkExpired:
       'Ce lien a expiré ou a déjà été utilisé. Demande un nouveau lien et clique sur le plus récent.',
@@ -2006,7 +2006,7 @@ const en: Messages = {
     detailDown: 'These details are temporarily unavailable. Try again shortly.',
   },
   auth: {
-    captchaChecking: 'Checking you are not a robot…',
+    captchaChecking: 'Checking you are not a robot… (this can take up to 20 seconds)',
     captchaFailed: 'The anti-robot check did not work. Reload the page and try again.',
     linkExpired:
       'This link has expired or was already used. Request a new link and click the most recent one.',
