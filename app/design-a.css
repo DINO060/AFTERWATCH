@@ -828,28 +828,75 @@ h1 {
     flex: 0 0 auto;
     height: 40px;
   }
+  /* Phones: a card half as tall, so what follows shows without scrolling. */
   .hero,
   .hero-skeleton {
-    height: 500px;
+    height: 300px;
     border-radius: 18px;
   }
   .hero-scrim {
     background: linear-gradient(
       0deg,
       rgba(10, 11, 15, 0.96) 0%,
-      rgba(10, 11, 15, 0.82) 50%,
-      rgba(10, 11, 15, 0.2) 100%
+      rgba(10, 11, 15, 0.86) 45%,
+      rgba(10, 11, 15, 0.1) 100%
     );
   }
   .hero-content {
     justify-content: flex-end;
-    padding: 24px 20px 64px;
+    gap: 7px;
+    padding: 16px 14px 50px;
+  }
+  .hero-tag {
+    padding: 3px 7px;
+    font-size: 11px;
   }
   .hero h2 {
-    font-size: 28px;
+    font-size: 22px;
+  }
+  /* Genres as one line of text: Drame · Fantasy · Aventure. */
+  .hero-genres {
+    flex-wrap: nowrap;
+    gap: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .hero-genres li {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #d9d6d2;
+  }
+  .hero-genres li + li::before {
+    content: '·';
+    margin: 0 6px;
+  }
+  .hero-genres li:nth-child(n + 4) {
+    display: none;
   }
   .hero-synopsis {
-    -webkit-line-clamp: 2;
+    display: none;
+  }
+  .hero-actions {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .hero-actions button {
+    height: 42px;
+    padding: 0 14px;
+    font-size: 14.5px;
+  }
+  .hero-actions button:first-child {
+    flex: 1;
+  }
+  .hero-controls {
+    bottom: 8px;
+    padding: 3px 8px;
   }
   .hero-arrow {
     display: none;
@@ -1768,6 +1815,15 @@ h1 {
   font-size: 28px;
 }
 .dx-avatar.lg.round {
+  border-radius: 999px;
+}
+.dx-avatar.xl {
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  font-size: 38px;
+}
+.dx-avatar.xl.round {
   border-radius: 999px;
 }
 /* A profile photo in place of the letter. */
@@ -2855,10 +2911,6 @@ h1 {
 .cv-pace .dx-switch.on span {
   left: 19px;
 }
-.cv-trend-strip {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-}
 .cv-trend-chip {
   flex: none;
   height: 32px;
@@ -2875,6 +2927,193 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+/* Phones and tablets: the discussions as bubbles on top, the right column's pieces inside the feed. */
+.cv-module-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px 8px;
+}
+.cv-module-head h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+}
+.cv-module-head > span {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+.cv-module-head > .cv-swipe {
+  color: #ff8572;
+  font-weight: 700;
+}
+.cv-bubbles {
+  padding: 12px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+.cv-bubbles .cv-module-head h2 {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+}
+.cv-bubble-row {
+  gap: 14px;
+  padding: 2px 16px;
+}
+.cv-bubble {
+  flex: none;
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  text-align: center;
+}
+.cv-bubble-ring {
+  display: block;
+  width: 64px;
+  height: 64px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #2f3340;
+  color: var(--muted-foreground);
+}
+.cv-bubble.fresh .cv-bubble-ring {
+  background: conic-gradient(var(--primary), #ff9a7a, var(--primary));
+}
+.cv-bubble.add .cv-bubble-ring {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1.5px dashed #3a3f4c;
+  background: transparent;
+}
+.cv-bubble:hover .cv-bubble-ring {
+  filter: brightness(1.12);
+}
+.cv-bubble-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--background);
+  border-radius: 999px;
+  object-fit: cover;
+}
+.cv-bubble-title,
+.cv-bubble-where {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+.cv-bubble-title {
+  font-weight: 700;
+}
+.cv-bubble-where {
+  margin-top: -4px;
+  color: var(--muted-foreground);
+}
+.cv-bubble.add .cv-bubble-title {
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.cv-bubble-note {
+  flex: 1 0 180px;
+  align-self: center;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+.cv-module {
+  padding: 14px 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+.cv-module .cv-module-head {
+  padding-bottom: 10px;
+}
+.cv-discover-strip {
+  background: linear-gradient(180deg, rgba(255, 106, 85, 0.05), transparent);
+}
+.cv-module-row {
+  gap: 10px;
+  padding: 2px 16px;
+}
+.cv-slide {
+  flex: none;
+  width: 150px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+.cv-slide-media {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.cv-slide-img {
+  display: block;
+  width: 100%;
+  height: 92px;
+  object-fit: cover;
+}
+.cv-slide-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+}
+.cv-slide-body strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.cv-slide-body > span {
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.cv-slide-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  margin-top: auto;
+  border: 1px solid #3a3f4c;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 12.5px;
+}
+.cv-slide-add:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: #ff8572;
+}
+@media (min-width: 1100px) {
+  .cv-bubbles,
+  .cv-module {
+    display: none;
+  }
+}
+@media (max-width: 1099px) {
+  .cv-side {
+    display: none;
+  }
 }
 .cv-panel {
   display: flex;
@@ -3057,8 +3296,7 @@ h1 {
   .cv-side {
     padding-top: 18px;
   }
-  .cv-protect,
-  .cv-trend-strip {
+  .cv-protect {
     display: none;
   }
   .px-embed {
@@ -4062,4 +4300,211 @@ h1 {
 .avatar-badge.photo {
   display: block;
   object-fit: cover;
+}
+
+/* ---------- Mon compte: the profile on top, the public profile, then the private rows ---------- */
+.profile-hero {
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 26px 20px 22px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(255, 106, 85, 0.18), transparent 70%), var(--card);
+}
+.profile-hero-photo {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+.profile-hero-photo:disabled {
+  opacity: 0.85;
+}
+.profile-hero-photo .dx-avatar {
+  border: 3px solid var(--background);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.profile-hero-photo .avatar-setting-badge {
+  right: 0;
+  bottom: 2px;
+  width: 30px;
+  height: 30px;
+  border-color: var(--background);
+}
+.profile-hero h1 {
+  max-width: 100%;
+  margin: 6px 0 0;
+  font-size: 24px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.profile-hero-handle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ff8572;
+}
+.profile-hero-handle.none {
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.profile-hero-email {
+  max-width: 100%;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.profile-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 22px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.profile-hero-stats strong {
+  font-size: 15px;
+  color: var(--foreground);
+}
+.profile-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.profile-hero-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+.profile-hero-edit {
+  border: 0;
+  background: var(--foreground);
+  color: var(--background);
+  font-weight: 700;
+}
+.profile-hero-share {
+  border: 1px solid #2f3340;
+  background: transparent;
+  color: var(--foreground);
+}
+.profile-hero-share:disabled {
+  opacity: 0.5;
+}
+#public-profile {
+  scroll-margin-top: calc(var(--header-h) + 12px);
+}
+#public-profile > .section-heading {
+  margin-bottom: 14px;
+}
+.account-public-hint {
+  margin: -6px 0 0;
+  font-size: 13px;
+}
+.account-group {
+  max-width: 560px;
+  margin-top: 24px;
+}
+.account-group > .section-heading {
+  margin-bottom: 6px;
+}
+.account-group > .subdued {
+  margin: 0;
+  font-size: 13px;
+}
+.account-rows {
+  margin-top: 12px;
+}
+.account-row {
+  border-top: 1px solid var(--border);
+}
+.account-row > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 0;
+  list-style: none;
+  cursor: pointer;
+}
+.account-row > summary::-webkit-details-marker {
+  display: none;
+}
+.account-row-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.account-row-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--muted-foreground);
+}
+.account-row-chevron {
+  flex: none;
+  color: var(--muted-foreground);
+  transition: transform 0.2s;
+}
+.account-row[open] .account-row-chevron {
+  transform: rotate(90deg);
+}
+.account-row-body {
+  padding: 4px 0 18px;
+}
+/* The settings inside a row lose their own card: the row is the card. */
+.account-row-body > .panel {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.account-row-body > .panel > .section-heading {
+  display: none;
+}
+.account-signout {
+  margin-top: 12px;
+}
+@media (max-width: 900px) {
+  /* Phones: the profile runs edge to edge, right under the header. */
+  .profile-hero {
+    max-width: none;
+    margin: -18px -16px 0;
+    padding: 26px 16px 20px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: radial-gradient(120% 90% at 50% 0%, rgba(255, 106, 85, 0.18), transparent 70%);
+  }
+  .profile-hero + .account-section {
+    margin-top: 16px;
+  }
+  .account-group {
+    margin-top: 16px;
+  }
+}
+@media (max-width: 390px) {
+  .profile-hero {
+    margin: -22px -14px 0;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
 }

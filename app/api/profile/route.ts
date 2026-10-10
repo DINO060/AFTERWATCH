@@ -4,11 +4,12 @@ import { langFromRequest, messages } from '@/lib/i18n';
 import { errorResponse, sameOrigin } from '@/lib/server';
 import { usernameProblem } from '@/lib/username';
 import { removeAvatarFile } from '@/lib/community-server';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store' };
 
-/** The member's public username (null before they choose one) and profile photo. */
+/** The member's public username (null before they choose one), profile photo and post counts. */
 export async function GET(request: Request) {
   const lang = langFromRequest(request);
   try {
@@ -19,8 +20,24 @@ export async function GET(request: Request) {
       .eq('user_id', user.id)
       .maybeSingle();
     if (error) throw new Error(`Profile read failed (${error.code})`);
+    // How many posts and recommendations, for the profile header. Members cannot read the posts
+    // table themselves; the server counts their own.
+    const admin = createSupabaseAdminClient();
+    const count = async (kind: 'all' | 'reco') => {
+      if (!admin) return 0;
+      let query = admin
+        .from('community_comments')
+        .select('id', { count: 'exact', head: true })
+        .eq('author_id', user.id)
+        .is('parent_id', null)
+        .is('deleted_at', null);
+      if (kind === 'reco') query = query.eq('kind', 'reco');
+      const { count: n } = await query;
+      return n ?? 0;
+    };
+    const [posts, recos] = await Promise.all([count('all'), count('reco')]);
     return Response.json(
-      { username: data?.username ?? null, avatar: data?.avatar_path ?? null },
+      { username: data?.username ?? null, avatar: data?.avatar_path ?? null, stats: { posts, recos } },
       { headers },
     );
   } catch (e) {

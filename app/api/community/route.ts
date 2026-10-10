@@ -244,7 +244,7 @@ export async function POST(request: Request) {
         p_limit: 20,
       });
     else if (a.op === 'discover')
-      result = await call(supabase, 'community_discover', { p_works: a.works, p_limit: 4 });
+      result = await call(supabase, 'community_discover', { p_works: a.works, p_limit: 8 });
     else if (a.op === 'reveal') result = await call(supabase, 'community_reveal', { p_ids: a.ids });
     else if (a.op === 'resolve') {
       const files = a.action === 'remove' ? await filesOfPost(a.comment) : { photos: [], videos: [] };

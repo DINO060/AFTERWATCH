@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   Check,
   ChevronRight,
@@ -42,7 +42,15 @@ type Activity = WorkKey & {
   fresh?: boolean;
 };
 type Trend = { tag: string; posts: number; members: number };
-type Pick4 = { ref: TargetRef; title: string; image: string; item?: CatalogItem };
+type DiscoverPick = { ref: TargetRef; title: string; image: string; recos?: number; item?: CatalogItem };
+type Discussions = {
+  /** The list has titles that can be discussed. */
+  hasList: boolean;
+  loading: boolean;
+  /** The items have messages (else they are the titles being watched, to start a discussion). */
+  talked: boolean;
+  items: { id: string; title: string; poster: string; open: TargetRef; where: string; a?: Activity }[];
+};
 type Shown = { body: string; photos: Photo[]; video?: Video | null };
 type Revealed = Record<string, Shown>;
 const FRESH = 48 * 3600 * 1000;
@@ -93,6 +101,8 @@ export default function CommunityView({
     [collection],
   );
   const listKey = works.map(keyOf).join('|');
+  const discussions = useDiscussions(signedIn, collection, works, listKey);
+  const picks = useDiscover(signedIn, collection, works, listKey);
   const [kind, setKind] = useState<Kind | null>(null);
   const [items, setItems] = useState<FeedItem[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -278,6 +288,33 @@ export default function CommunityView({
   const write = () => (userId ? setComposing(true) : onSignIn());
   const showTrends = trends.length > 0 && !tag;
 
+  // Phones and tablets have no right column: its pieces come into the feed instead.
+  const discoverModule = picks && picks.length > 0 && (
+    <DiscoverStrip picks={picks} adding={adding} onOpen={onOpen} onAdd={(p) => add(p.ref, p.item)} />
+  );
+  const trendsModule = showTrends && (
+    <section className="cv-module" aria-label={h.trends}>
+      <div className="cv-module-head">
+        <h2>{h.trends}</h2>
+        <span>{h.trendsHint}</span>
+      </div>
+      <div className="dx-strip cv-module-row">
+        {trends.map((tr) => (
+          <button key={tr.tag} type="button" className="cv-trend-chip" onClick={() => onTag(tr.tag)}>
+            #{tr.tag}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+  // "À découvrir" after the 2nd post, the trends after the 5th (or at the end of a shorter feed).
+  const modulesAfter = (i: number, count: number) => (
+    <>
+      {(i === 1 || (count < 2 && i === count - 1)) && discoverModule}
+      {(i === 4 || (count < 5 && i === count - 1)) && trendsModule}
+    </>
+  );
+
   return (
     <div className="cv">
       <div className="cv-main">
@@ -310,6 +347,8 @@ export default function CommunityView({
           ))}
         </div>
 
+        <DiscussionBubbles d={discussions} onOpen={onOpen} onBrowse={onBrowse} />
+
         <button type="button" className="cv-compose" onClick={write}>
           <Avatar name={username} avatar={avatar} round />
           <span className="cv-compose-text">{h.whatsNew}</span>
@@ -326,16 +365,6 @@ export default function CommunityView({
           <Switch on={protection} onChange={toggleProtection} label={h.protection} tone="green" />
         </div>
 
-        {showTrends && (
-          <div className="dx-strip cv-trend-strip" role="group" aria-label={h.trends}>
-            {trends.map((tr) => (
-              <button key={tr.tag} type="button" className="cv-trend-chip" onClick={() => onTag(tr.tag)}>
-                #{tr.tag}
-              </button>
-            ))}
-          </div>
-        )}
-
         {failed && !items ? (
           <div className="notice danger dx-error" role="alert">
             {h.loadFailed}
@@ -346,33 +375,39 @@ export default function CommunityView({
         ) : !items ? (
           <Loading />
         ) : items.length === 0 ? (
-          <section className="cx-empty">
-            <MessageCircle size={28} aria-hidden />
-            <p>{tag ? h.tagEmpty : kind ? h.emptyKind : h.empty}</p>
-          </section>
+          <>
+            <section className="cx-empty">
+              <MessageCircle size={28} aria-hidden />
+              <p>{tag ? h.tagEmpty : kind ? h.emptyKind : h.empty}</p>
+            </section>
+            {discoverModule}
+            {trendsModule}
+          </>
         ) : (
           <div className="cv-feed">
-            {items.map((item) => (
-              <FeedPost
-                key={item.id}
-                item={item}
-                shown={
-                  item.body !== null
-                    ? { body: item.body, photos: item.photos, video: item.video }
-                    : (revealed[item.id] ?? null)
-                }
-                seen={seenOf(item)}
-                inList={inCollection(item.target, collection)}
-                adding={!!adding[keyOf(item.target)]}
-                revealing={!!revealing[item.id]}
-                onOpen={onOpen}
-                onTag={onTag}
-                onReveal={() => reveal(item.id)}
-                onLike={() => like(item)}
-                onShare={() => share(refOf(item.target), item.target.title)}
-                onAdd={() => add(item.target)}
-                onReport={() => setToReport(item.id)}
-              />
+            {items.map((item, i) => (
+              <Fragment key={item.id}>
+                <FeedPost
+                  item={item}
+                  shown={
+                    item.body !== null
+                      ? { body: item.body, photos: item.photos, video: item.video }
+                      : (revealed[item.id] ?? null)
+                  }
+                  seen={seenOf(item)}
+                  inList={inCollection(item.target, collection)}
+                  adding={!!adding[keyOf(item.target)]}
+                  revealing={!!revealing[item.id]}
+                  onOpen={onOpen}
+                  onTag={onTag}
+                  onReveal={() => reveal(item.id)}
+                  onLike={() => like(item)}
+                  onShare={() => share(refOf(item.target), item.target.title)}
+                  onAdd={() => add(item.target)}
+                  onReport={() => setToReport(item.id)}
+                />
+                {modulesAfter(i, items.length)}
+              </Fragment>
             ))}
             {hasMore && (
               <button className="dx-more cv-more" onClick={more} disabled={busy}>
@@ -384,13 +419,7 @@ export default function CommunityView({
       </div>
 
       <aside className="cv-side">
-        <YourDiscussions
-          collection={collection}
-          works={works}
-          listKey={listKey}
-          onOpen={onOpen}
-          onBrowse={onBrowse}
-        />
+        <YourDiscussions d={discussions} onOpen={onOpen} onBrowse={onBrowse} />
         <section className="cv-panel cv-pace">
           <div className="cv-pace-head">
             <ShieldCheck size={22} aria-hidden />
@@ -413,14 +442,7 @@ export default function CommunityView({
             </div>
           </section>
         )}
-        <Discover
-          collection={collection}
-          works={works}
-          listKey={listKey}
-          adding={adding}
-          onOpen={onOpen}
-          onAdd={(p) => add(p.ref, p.item)}
-        />
+        <Discover picks={picks} adding={adding} onOpen={onOpen} onAdd={(p) => add(p.ref, p.item)} />
       </aside>
 
       <button type="button" className="cv-fab" aria-label={h.write} onClick={write}>
@@ -582,25 +604,18 @@ function FeedPost({
   );
 }
 
-function YourDiscussions({
-  collection,
-  works,
-  listKey,
-  onOpen,
-  onBrowse,
-}: {
-  collection: Media[];
-  works: WorkKey[];
-  listKey: string;
-  onOpen: (ref: TargetRef) => void;
-  onBrowse: () => void;
-}) {
+/** The member's titles with recent messages, latest first; with none yet, the titles being watched. */
+function useDiscussions(
+  enabled: boolean,
+  collection: Media[],
+  works: WorkKey[],
+  listKey: string,
+): Discussions {
   const { t } = useI18n();
   const c = t.community;
-  const h = c.hub;
   const [activity, setActivity] = useState<Map<string, Activity> | null>(null);
   useEffect(() => {
-    if (!works.length) return;
+    if (!enabled || !works.length) return;
     let live = true;
     post<Activity[]>({ op: 'works', works })
       .then((list) => {
@@ -616,7 +631,7 @@ function YourDiscussions({
     };
     // listKey stands for works.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listKey]);
+  }, [listKey, enabled]);
 
   const rows = collection
     .map((m) => ({ m, ref: refFromMedia(m) }))
@@ -625,89 +640,59 @@ function YourDiscussions({
   const talked = rows
     .filter((x) => x.a)
     .sort((x, y) => Date.parse(y.a!.latestAt) - Date.parse(x.a!.latestAt))
-    .slice(0, 5);
-  // Nothing said yet about the list: the titles being watched, to start a discussion.
-  const shown = talked.length
+    .slice(0, 12);
+  const chosen = talked.length
     ? talked
     : rows
         .filter((x) => x.m.status === 'watching')
         .concat(rows.filter((x) => x.m.status !== 'watching'))
-        .slice(0, 3);
-
-  return (
-    <section className="cv-panel">
-      <h2>{h.yourDiscussions}</h2>
-      <p className="cv-panel-hint">{h.yourDiscussionsHint}</p>
-      {!rows.length ? (
-        <div className="cv-panel-empty">
-          <p>{h.mineEmpty}</p>
-          <button className="secondary small-btn" onClick={onBrowse}>
-            {h.browse}
-          </button>
-        </div>
-      ) : activity === null ? (
-        <Loading />
-      ) : (
-        <div className="cv-rows">
-          {shown.map(({ m, ref, a }) => {
-            const latest = a?.latest;
-            const open: TargetRef =
-              latest && latest.episode !== null
-                ? { ...ref, season: latest.season, episode: latest.episode }
-                : m.kind === 'anime' && m.progress > 0
-                  ? { ...ref, episode: m.progress }
-                  : ref;
-            const where =
-              open.episode !== null
-                ? [open.season !== null ? c.seasonTiny(open.season) : null, c.episodeShort(open.episode)]
-                    .filter(Boolean)
-                    .join(' · ')
-                : t.kinds[m.kind];
-            return (
-              <button key={m.id} className="cv-row" onClick={() => onOpen(open)}>
-                <Poster src={m.poster} className="cv-row-poster" />
-                <span className="cv-row-text">
-                  <strong>{m.title}</strong>
-                  <span>{a ? `${where} · ${h.messages(a.debriefs)}` : h.startDiscussion}</span>
-                </span>
-                {a?.fresh ? (
-                  <span className="cx-fresh">{h.fresh}</span>
-                ) : (
-                  <ChevronRight size={18} className="cv-row-arrow" aria-hidden />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
+        .slice(0, 6);
+  return {
+    hasList: rows.length > 0,
+    loading: activity === null,
+    talked: talked.length > 0,
+    items: chosen.map(({ m, ref, a }) => {
+      const latest = a?.latest;
+      const open: TargetRef =
+        latest && latest.episode !== null
+          ? { ...ref, season: latest.season, episode: latest.episode }
+          : m.kind === 'anime' && m.progress > 0
+            ? { ...ref, episode: m.progress }
+            : ref;
+      const where =
+        open.episode !== null
+          ? [open.season !== null ? c.seasonTiny(open.season) : null, c.episodeShort(open.episode)]
+              .filter(Boolean)
+              .join(' · ')
+          : t.kinds[m.kind];
+      return { id: m.id, title: m.title, poster: m.poster, open, where, a };
+    }),
+  };
 }
 
-function Discover({
-  collection,
-  works,
-  listKey,
-  adding,
-  onOpen,
-  onAdd,
-}: {
-  collection: Media[];
-  works: WorkKey[];
-  listKey: string;
-  adding: Record<string, boolean>;
-  onOpen: (ref: TargetRef) => void;
-  onAdd: (p: Pick4) => void;
-}) {
-  const { t } = useI18n();
-  const h = t.community.hub;
-  const [picks, setPicks] = useState<Pick4[] | null>(null);
+/** Works recommended lately that are not in the list; with none, what is airing now. */
+function useDiscover(
+  enabled: boolean,
+  collection: Media[],
+  works: WorkKey[],
+  listKey: string,
+): DiscoverPick[] | null {
+  const [picks, setPicks] = useState<DiscoverPick[] | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
-    post<(WorkKey & { title: string; poster: string; backdrop: string })[]>({ op: 'discover', works })
+    post<(WorkKey & { title: string; poster: string; backdrop: string; recos: number })[]>({
+      op: 'discover',
+      works,
+    })
       .then(async (list) => {
         if (list.length)
-          return list.map((w) => ({ ref: workOnly(w), title: w.title, image: w.backdrop || w.poster }));
+          return list.map((w) => ({
+            ref: workOnly(w),
+            title: w.title,
+            image: w.backdrop || w.poster,
+            recos: w.recos,
+          }));
         // No recommendations yet: what is airing now, from the catalog.
         const page = await api<{ results: CatalogItem[] }>('/api/catalog?kind=anime&feed=airing');
         return page.results
@@ -715,7 +700,7 @@ function Discover({
           .filter(
             (x): x is { item: CatalogItem; ref: TargetRef } => !!x.ref && !inCollection(x.ref, collection),
           )
-          .slice(0, 4)
+          .slice(0, 8)
           .map(({ item, ref }) => ({ ref, title: item.title, image: item.backdrop || item.poster, item }));
       })
       .then((list) => live && setPicks(list))
@@ -725,9 +710,122 @@ function Discover({
     };
     // listKey stands for works and the collection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listKey]);
-  const visible = (picks || []).filter((p) => !inCollection(p.ref, collection));
-  if (picks !== null && !visible.length) return null;
+  }, [listKey, enabled]);
+  return picks && picks.filter((p) => !inCollection(p.ref, collection));
+}
+
+/** Phones and tablets: the discussions as round bubbles to swipe, like stories. */
+function DiscussionBubbles({
+  d,
+  onOpen,
+  onBrowse,
+}: {
+  d: Discussions;
+  onOpen: (ref: TargetRef) => void;
+  onBrowse: () => void;
+}) {
+  const { t } = useI18n();
+  const h = t.community.hub;
+  return (
+    <section className="cv-bubbles" aria-label={h.yourDiscussions}>
+      <div className="cv-module-head">
+        <h2>{h.yourDiscussions}</h2>
+        {d.items.length > 3 && <span>{h.swipe}</span>}
+      </div>
+      <div className="dx-strip cv-bubble-row">
+        {d.hasList && d.loading
+          ? [0, 1, 2, 3].map((i) => (
+              <span key={i} className="cv-bubble" aria-hidden>
+                <span className="cv-bubble-ring" />
+              </span>
+            ))
+          : d.items.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                className={`cv-bubble${x.a?.fresh ? ' fresh' : ''}`}
+                onClick={() => onOpen(x.open)}
+              >
+                <span className="cv-bubble-ring">
+                  <Poster src={x.poster} className="cv-bubble-img" />
+                </span>
+                <span className="cv-bubble-title">{x.title}</span>
+                <span className="cv-bubble-where">{x.where}</span>
+              </button>
+            ))}
+        <button type="button" className="cv-bubble add" aria-label={h.browse} onClick={onBrowse}>
+          <span className="cv-bubble-ring">
+            <Plus size={24} aria-hidden />
+          </span>
+          <span className="cv-bubble-title">{t.nav.catalog}</span>
+        </button>
+        {!d.hasList && <p className="cv-bubble-note">{h.mineEmpty}</p>}
+      </div>
+    </section>
+  );
+}
+
+function YourDiscussions({
+  d,
+  onOpen,
+  onBrowse,
+}: {
+  d: Discussions;
+  onOpen: (ref: TargetRef) => void;
+  onBrowse: () => void;
+}) {
+  const { t } = useI18n();
+  const h = t.community.hub;
+  return (
+    <section className="cv-panel">
+      <h2>{h.yourDiscussions}</h2>
+      <p className="cv-panel-hint">{h.yourDiscussionsHint}</p>
+      {!d.hasList ? (
+        <div className="cv-panel-empty">
+          <p>{h.mineEmpty}</p>
+          <button className="secondary small-btn" onClick={onBrowse}>
+            {h.browse}
+          </button>
+        </div>
+      ) : d.loading ? (
+        <Loading />
+      ) : (
+        <div className="cv-rows">
+          {d.items.slice(0, d.talked ? 5 : 3).map((x) => (
+            <button key={x.id} className="cv-row" onClick={() => onOpen(x.open)}>
+              <Poster src={x.poster} className="cv-row-poster" />
+              <span className="cv-row-text">
+                <strong>{x.title}</strong>
+                <span>{x.a ? `${x.where} · ${h.messages(x.a.debriefs)}` : h.startDiscussion}</span>
+              </span>
+              {x.a?.fresh ? (
+                <span className="cx-fresh">{h.fresh}</span>
+              ) : (
+                <ChevronRight size={18} className="cv-row-arrow" aria-hidden />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** The right column's "À découvrir": a 2 by 2 grid. */
+function Discover({
+  picks,
+  adding,
+  onOpen,
+  onAdd,
+}: {
+  picks: DiscoverPick[] | null;
+  adding: Record<string, boolean>;
+  onOpen: (ref: TargetRef) => void;
+  onAdd: (p: DiscoverPick) => void;
+}) {
+  const { t } = useI18n();
+  const h = t.community.hub;
+  if (picks !== null && !picks.length) return null;
   return (
     <section className="cv-panel">
       <h2>{h.discover}</h2>
@@ -735,7 +833,7 @@ function Discover({
         <Loading />
       ) : (
         <div className="cv-discover">
-          {visible.map((p) => (
+          {picks.slice(0, 4).map((p) => (
             <div key={keyOf(p.ref)} className="cv-pick">
               <button className="cv-pick-media" onClick={() => onOpen(p.ref)} aria-label={p.title}>
                 <Poster src={p.image} className="cv-pick-img" />
@@ -749,6 +847,49 @@ function Discover({
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+/** Phones and tablets: "À découvrir" inside the feed, as cards to swipe. */
+function DiscoverStrip({
+  picks,
+  adding,
+  onOpen,
+  onAdd,
+}: {
+  picks: DiscoverPick[];
+  adding: Record<string, boolean>;
+  onOpen: (ref: TargetRef) => void;
+  onAdd: (p: DiscoverPick) => void;
+}) {
+  const { t } = useI18n();
+  const h = t.community.hub;
+  return (
+    <section className="cv-module cv-discover-strip" aria-label={h.discover}>
+      <div className="cv-module-head">
+        <h2>{h.discover}</h2>
+        {picks.length > 2 && <span className="cv-swipe">{h.swipe}</span>}
+      </div>
+      <div className="dx-strip cv-module-row">
+        {picks.map((p) => (
+          <div key={keyOf(p.ref)} className="cv-slide">
+            <button className="cv-slide-media" onClick={() => onOpen(p.ref)} aria-label={p.title}>
+              <Poster src={p.image} className="cv-slide-img" />
+            </button>
+            <div className="cv-slide-body">
+              <strong>{p.title}</strong>
+              <span>
+                {[p.recos ? h.recos(p.recos) : null, t.kinds[p.ref.kind]].filter(Boolean).join(' · ')}
+              </span>
+              <button className="cv-slide-add" onClick={() => onAdd(p)} disabled={!!adding[keyOf(p.ref)]}>
+                <Plus size={14} aria-hidden />
+                {h.addToList}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

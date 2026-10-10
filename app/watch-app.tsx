@@ -80,7 +80,7 @@ import DiscussionView from './discussion-view';
 import ModerationView from './moderation-view';
 import CommunityView from './community-view';
 import { parseRefPath, refFromMedia, refPath, type TargetRef } from '@/lib/community';
-import { DataSettings, UsernameSettings } from './account-settings';
+import { AccountGroup, DataSettings, UsernameSettings } from './account-settings';
 import { CONTACT_EMAIL, legalPaths } from '@/lib/legal';
 import { applyOps, type Op } from '@/lib/assistant/ops';
 import type { Feed } from '@/lib/catalog-gateway';
@@ -808,7 +808,8 @@ export default function WatchApp({
           view !== 'assistant' &&
           view !== 'discussion' &&
           view !== 'moderation' &&
-          view !== 'community' && (
+          view !== 'community' &&
+          !(view === 'account' && auth.user && !recovery) && (
             <div className="page-heading">
               <div>
                 <p className="eyebrow">{t.app.eyebrow}</p>
@@ -849,7 +850,35 @@ export default function WatchApp({
         ) : loaded || ['home', 'catalog', 'account'].includes(view) ? (
           <>
             {view === 'account' &&
-              (authChecked ? (
+              (authChecked && auth.user && !recovery ? (
+                // Signed in: the profile first, then the private settings folded into rows.
+                <>
+                  <UsernameSettings
+                    key={`name-${auth.user.id}`}
+                    userId={auth.user.id}
+                    user={auth.user}
+                    titles={state.media.length}
+                    onChange={refreshAccount}
+                  />
+                  <AccountGroup
+                    displayName={auth.user.displayName}
+                    account={
+                      <AuthPanel
+                        key={authScreen.nonce}
+                        {...auth}
+                        initialMode={authScreen.mode}
+                        onProfileChange={refreshAccount}
+                        compact
+                      />
+                    }
+                    notifications={<NotificationSettings key={auth.user.id} />}
+                    data={<DataSettings key={`data-${auth.user.id}`} userId={auth.user.id} />}
+                  />
+                  <div className="install-row">
+                    <InstallApp />
+                  </div>
+                </>
+              ) : authChecked ? (
                 <>
                   <AuthPanel
                     key={authScreen.nonce}
@@ -862,6 +891,8 @@ export default function WatchApp({
                     <UsernameSettings
                       key={`name-${auth.user.id}`}
                       userId={auth.user.id}
+                      user={auth.user}
+                      titles={state.media.length}
                       onChange={refreshAccount}
                     />
                   )}

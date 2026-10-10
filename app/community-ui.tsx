@@ -75,7 +75,7 @@ export function Avatar({
 }: {
   name: string | null;
   avatar?: string | null;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   round?: boolean;
 }) {
   const [broken, setBroken] = useState<string | null>(null);

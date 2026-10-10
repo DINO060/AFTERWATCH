@@ -58,6 +58,8 @@ export type AuthPanelProps = AuthStatus & {
   initialMode?: AuthMode;
   /** Opened from a password-reset link: ask for the new password first. */
   recovery?: boolean;
+  /** Inside "Mon compte" › Compte: no title, no "signed in as" line, no sign-out button. */
+  compact?: boolean;
 };
 
 function GoogleIcon() {
@@ -146,6 +148,7 @@ export function AuthPanel({
   onProfileChange,
   initialMode = 'login',
   recovery = false,
+  compact = false,
 }: AuthPanelProps) {
   const { t } = useI18n();
   const [screen, setScreen] = useState<Screen>(initialMode);
@@ -419,18 +422,22 @@ export function AuthPanel({
               {passwordForm}
             </div>
           )}
-          <div className="section-heading">
-            <h2>
-              <Mail size={19} />
-              {t.auth.myAccount}
-            </h2>
-          </div>
-          <p className="subdued">
-            {t.auth.signedInAs} <strong>{user.displayName}</strong>
-            {user.email && <> · {user.email}</>}
-            {t.auth.accountNote}
-          </p>
-          <form className="name-form mt-24" onSubmit={saveName}>
+          {!compact && (
+            <>
+              <div className="section-heading">
+                <h2>
+                  <Mail size={19} />
+                  {t.auth.myAccount}
+                </h2>
+              </div>
+              <p className="subdued">
+                {t.auth.signedInAs} <strong>{user.displayName}</strong>
+                {user.email && <> · {user.email}</>}
+                {t.auth.accountNote}
+              </p>
+            </>
+          )}
+          <form className={`name-form${compact ? '' : ' mt-24'}`} onSubmit={saveName}>
             <label className="field">
               <span>{t.auth.nameLabel}</span>
               <span className="name-row">
@@ -468,10 +475,12 @@ export function AuthPanel({
                 {t.auth.linkTelegram}
               </button>
             )}
-            <button className="secondary" type="button" disabled={Boolean(busy)} onClick={signOut}>
-              {spinner('signout', <LogOut size={16} />)}
-              {t.auth.signOut}
-            </button>
+            {!compact && (
+              <button className="secondary" type="button" disabled={Boolean(busy)} onClick={signOut}>
+                {spinner('signout', <LogOut size={16} />)}
+                {t.auth.signOut}
+              </button>
+            )}
           </div>
         </>
       ) : screen === 'forgot' ? (
