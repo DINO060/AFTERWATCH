@@ -92,6 +92,8 @@ const fr = {
     language: 'Langue',
   },
   home: {
+    all: 'Tout',
+    popularOf: (kinds: string) => `${kinds} populaires`,
     tonight: 'Ta soirée',
     tonightEmpty: 'Rien de prévu ce soir. Ajoute une séance ou prépare ta semaine.',
     rowEmpty: 'Rien à afficher pour le moment.',
@@ -1162,6 +1164,8 @@ const en: Messages = {
     language: 'Language',
   },
   home: {
+    all: 'All',
+    popularOf: (kinds: string) => `Popular ${kinds.toLowerCase()}`,
     tonight: 'Your evening',
     tonightEmpty: 'Nothing planned tonight. Add a session or plan your week.',
     rowEmpty: 'Nothing to show right now.',

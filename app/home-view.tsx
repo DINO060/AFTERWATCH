@@ -6,6 +6,7 @@ import {
   Check,
   Clapperboard,
   Film,
+  LayoutGrid,
   LibraryBig,
   LoaderCircle,
   Plus,
@@ -21,7 +22,9 @@ import { CatalogPoster, feedLabel } from './catalog-browser';
 import { HeroCarousel } from './hero-carousel';
 import { useI18n } from './i18n-provider';
 
+type HomeKind = CatalogKind | 'all';
 const kinds = [
+  { key: 'all', icon: LayoutGrid },
   { key: 'anime', icon: Clapperboard },
   { key: 'manga', icon: BookOpen },
   { key: 'manhwa', icon: Smartphone },
@@ -29,6 +32,9 @@ const kinds = [
   { key: 'film', icon: Film },
   { key: 'series', icon: LibraryBig },
 ] as const;
+// "Tout": the carousel mixes what is new in these, and each kind gets its "popular" row.
+const ALL_HERO: CatalogKind[] = ['anime', 'film', 'series'];
+const ALL_ROWS: CatalogKind[] = ['anime', 'manga', 'series', 'film', 'manhwa', 'novel'];
 
 // One request per list for 10 minutes, shared by the carousel and the rows across views.
 const TTL = 10 * 60 * 1000;
@@ -68,6 +74,25 @@ function useNear<T extends Element>() {
   return [ref, near] as const;
 }
 
+/** Several lists at once (null while they load); `failed` when none of them could load. */
+function useFeeds(sources: [CatalogKind, Feed][], lang: Lang) {
+  const key = `${lang}|${sources.map(([k, f]) => `${k}:${f}`).join('|')}`;
+  const [state, setState] = useState<{ key: string; pages: (CatalogPage | null)[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    Promise.allSettled(sources.map(([k, f]) => loadFeed(k, f, lang))).then((results) => {
+      if (live) setState({ key, pages: results.map((r) => (r.status === 'fulfilled' ? r.value : null)) });
+    });
+    return () => {
+      live = false;
+    };
+    // `key` stands for the sources and the language.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  if (!state || state.key !== key) return null;
+  return { pages: state.pages, failed: state.pages.every((p) => !p) };
+}
+
 function useFeed(kind: CatalogKind, feed: Feed, lang: Lang) {
   const [state, setState] = useState<{ page: CatalogPage | null; failed: boolean }>({
     page: null,
@@ -104,19 +129,28 @@ export default function HomeView({
   tonight?: ReactNode;
 }) {
   const { t, lang } = useI18n();
-  const [kind, setKind] = useState<CatalogKind>('anime');
-  const feeds = feedsFor(kind, tmdb);
-  const heroFeed: Feed = feeds.includes('new') ? 'new' : feeds.includes('airing') ? 'airing' : 'popular';
-  const hero = useFeed(kind, heroFeed, lang);
-  const heroItems = useMemo(
-    () =>
-      hero.page
-        ? [...hero.page.results]
-            .sort((a, b) => Number(Boolean(b.backdrop)) - Number(Boolean(a.backdrop)))
-            .slice(0, 8)
-        : [],
-    [hero.page],
-  );
+  const [kind, setKind] = useState<HomeKind>('all');
+  const feeds = kind === 'all' ? [] : feedsFor(kind, tmdb);
+  const heroFeed: Feed =
+    kind === 'all' ? 'new' : feeds.includes('new') ? 'new' : feeds.includes('airing') ? 'airing' : 'popular';
+  const heroSources: [CatalogKind, Feed][] =
+    kind === 'all' ? ALL_HERO.map((k) => [k, 'new']) : [[kind, heroFeed]];
+  const hero = useFeeds(heroSources, lang);
+  const heroItems = useMemo(() => {
+    if (!hero) return [];
+    // Titles with a wide image first; with several lists, take them in turn.
+    const lists = hero.pages.map((page) =>
+      [...(page?.results || [])].sort((a, b) => Number(Boolean(b.backdrop)) - Number(Boolean(a.backdrop))),
+    );
+    const mixed: CatalogItem[] = [];
+    for (let i = 0; mixed.length < 8 && lists.some((l) => i < l.length); i++)
+      for (const list of lists) if (list[i] && mixed.length < 8) mixed.push(list[i]);
+    return mixed;
+  }, [hero]);
+  const rows: { kind: CatalogKind; feed: Feed; title?: string }[] =
+    kind === 'all'
+      ? ALL_ROWS.map((k) => ({ kind: k, feed: 'popular', title: t.home.popularOf(t.kindsPlural[k]) }))
+      : feeds.map((feed) => ({ kind, feed }));
   // List entries can lack counts; load the full record first, as the catalog does.
   const addWithDetail = async (item: CatalogItem) => {
     try {
@@ -153,11 +187,11 @@ export default function HomeView({
             onClick={() => setKind(key)}
           >
             <Icon size={17} />
-            {t.kindsPlural[key]}
+            {key === 'all' ? t.home.all : t.kindsPlural[key]}
           </button>
         ))}
       </div>
-      {hero.page ? (
+      {hero && !hero.failed ? (
         <HeroCarousel
           key={`${kind}:${heroFeed}`}
           items={heroItems}
@@ -167,15 +201,16 @@ export default function HomeView({
           onAdd={actions.add}
           onDetail={actions.detail}
         />
-      ) : hero.failed ? null : (
+      ) : hero?.failed ? null : (
         <Skeleton className="hero-skeleton" />
       )}
       {tonight}
-      {feeds.map((feed) => (
+      {rows.map((row) => (
         <FeedRow
-          key={`${kind}:${feed}`}
-          kind={kind}
-          feed={feed}
+          key={`${row.kind}:${row.feed}`}
+          kind={row.kind}
+          feed={row.feed}
+          title={row.title}
           lang={lang}
           saving={saving}
           collection={collection}
@@ -189,6 +224,7 @@ export default function HomeView({
 const FeedRow = memo(function FeedRow({
   kind,
   feed,
+  title: customTitle,
   lang,
   saving,
   collection,
@@ -196,6 +232,8 @@ const FeedRow = memo(function FeedRow({
 }: {
   kind: CatalogKind;
   feed: Feed;
+  /** In place of the list's usual name (e.g. "Mangas populaires" under "Tout"). */
+  title?: string;
   lang: Lang;
   saving: boolean;
   collection: Media[];
@@ -208,7 +246,7 @@ const FeedRow = memo(function FeedRow({
   // row comes near the screen: the rows further down do not slow the top of the page.
   const [rowRef, near] = useNear<HTMLElement>();
   const [busy, setBusy] = useState('');
-  const title = feedLabel(t, kind, feed);
+  const title = customTitle || feedLabel(t, kind, feed);
   const meta = (item: CatalogItem) => {
     if (feed === 'upcoming' && item.startDate)
       return new Date(item.startDate + 'T12:00:00').toLocaleDateString(locale, {
