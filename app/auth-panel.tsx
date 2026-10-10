@@ -42,6 +42,8 @@ export type AccountUser = {
   email: string | null;
   displayName: string;
   telegramLinked: boolean;
+  /** The community profile photo, in the avatar bucket. */
+  avatar?: string | null;
 };
 
 export type AuthStatus = {

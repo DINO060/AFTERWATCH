@@ -5,7 +5,7 @@ import { confirmsDeletion } from '@/lib/account';
 import { langFromRequest, messages } from '@/lib/i18n';
 import { errorResponse, sameOrigin } from '@/lib/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { removeMemberPhotos } from '@/lib/community-server';
+import { removeMemberFiles } from '@/lib/community-server';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -31,9 +31,9 @@ export async function POST(request: Request) {
       console.error('account_delete_unconfigured');
       return Response.json({ error: t.deleteFailed }, { status: 503, headers });
     }
-    // Supabase keeps an account that still owns files: the member's community photos go first.
+    // Supabase keeps an account that still owns files: the member's photos and videos go first.
     try {
-      await removeMemberPhotos(user.id);
+      await removeMemberFiles(user.id);
     } catch (e) {
       console.error('account_delete_photos_failed', e instanceof Error ? e.message : e);
       return Response.json({ error: t.deleteFailed }, { status: 503, headers });

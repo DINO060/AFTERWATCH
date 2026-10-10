@@ -1,7 +1,7 @@
 // Photos for community posts, prepared in the browser: drawn again at most 1600 px wide and saved
 // as WebP (JPEG where the browser cannot), which also drops the camera data such as the GPS
 // location. Then sent to the member's own folder of the photo bucket. Browser only.
-import { PHOTO_BUCKET, type Photo } from './community';
+import { AVATAR_BUCKET, PHOTO_BUCKET, type Photo } from './community';
 import { createSupabaseBrowserClient } from './supabase/browser';
 
 const MAX_SIDE = 1600;
@@ -10,8 +10,10 @@ const MAX_INPUT = 30 * 1024 * 1024;
 
 export type PreparedPhoto = { blob: Blob; w: number; h: number; ext: 'webp' | 'jpg'; preview: string };
 export class PhotoFailure extends Error {
-  constructor(public key: 'notImage' | 'tooBig' | 'unreadable' | 'upload') {
+  key: 'notImage' | 'tooBig' | 'unreadable' | 'upload';
+  constructor(key: PhotoFailure['key']) {
     super(key);
+    this.key = key;
   }
 }
 
@@ -82,5 +84,65 @@ export async function discardPhotos(paths: string[]) {
   await createSupabaseBrowserClient()
     ?.storage.from(PHOTO_BUCKET)
     .remove(paths)
+    .catch(() => {});
+}
+
+/** A profile photo: the centre of the picture, cropped to a 256 px square. */
+export async function prepareAvatar(file: File): Promise<PreparedPhoto> {
+  if (!file.type.startsWith('image/')) throw new PhotoFailure('notImage');
+  if (file.size > MAX_INPUT) throw new PhotoFailure('tooBig');
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    throw new PhotoFailure('unreadable');
+  }
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext('2d');
+  if (!context) throw new PhotoFailure('unreadable');
+  context.drawImage(
+    bitmap,
+    (bitmap.width - side) / 2,
+    (bitmap.height - side) / 2,
+    side,
+    side,
+    0,
+    0,
+    256,
+    256,
+  );
+  bitmap.close();
+  let blob = await encode(canvas, 'image/webp', 0.85);
+  let ext: PreparedPhoto['ext'] = 'webp';
+  if (!blob || blob.type !== 'image/webp') {
+    blob = await encode(canvas, 'image/jpeg', 0.88);
+    ext = 'jpg';
+  }
+  if (!blob) throw new PhotoFailure('unreadable');
+  return { blob, w: 256, h: 256, ext, preview: URL.createObjectURL(blob) };
+}
+
+/** Sends a profile photo to the member's own folder; the server then records it. */
+export async function uploadAvatar(userId: string, photo: PreparedPhoto): Promise<string> {
+  const supabase = createSupabaseBrowserClient();
+  if (!supabase) throw new PhotoFailure('upload');
+  const path = `${userId}/${crypto.randomUUID()}.${photo.ext}`;
+  const { error } = await supabase.storage.from(AVATAR_BUCKET).upload(path, photo.blob, {
+    contentType: photo.ext === 'webp' ? 'image/webp' : 'image/jpeg',
+    cacheControl: '31536000',
+    upsert: false,
+  });
+  if (error) throw new PhotoFailure('upload');
+  return path;
+}
+
+/** Removes a profile photo that was sent but could not be recorded. */
+export async function discardAvatar(path: string) {
+  await createSupabaseBrowserClient()
+    ?.storage.from(AVATAR_BUCKET)
+    .remove([path])
     .catch(() => {});
 }

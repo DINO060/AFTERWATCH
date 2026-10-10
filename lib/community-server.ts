@@ -6,7 +6,9 @@ import { titleStatus } from './assistant/sources';
 import { createSupabaseAdminClient } from './supabase/admin';
 import type { Lang } from './i18n';
 import {
+  AVATAR_BUCKET,
   PHOTO_BUCKET,
+  VIDEO_BUCKET,
   refProblem,
   type CommunitySource,
   type EpisodeGuide,
@@ -37,7 +39,8 @@ export type CommunityErrorKey =
   | 'invalid_action'
   | 'invalid_kind'
   | 'invalid_works'
-  | 'invalid_photos';
+  | 'invalid_photos'
+  | 'invalid_video';
 export class CommunityFailure extends Error {
   constructor(
     public key: CommunityErrorKey,
@@ -77,6 +80,7 @@ export function fromDatabase(error: { message?: string; code?: string }): Commun
     'invalid_kind',
     'invalid_works',
     'invalid_photos',
+    'invalid_video',
   ];
   return known.includes(key) ? new CommunityFailure(key, STATUS[key] ?? 400) : null;
 }
@@ -219,37 +223,55 @@ export async function ensureTarget(
   return { id, ...ref, title, poster, backdrop, year };
 }
 
-/** The photo files of a post, read before it is deleted so the files can go too. */
-export async function photosOfPost(commentId: string): Promise<string[]> {
+export type PostFiles = { photos: string[]; videos: string[] };
+
+/** The files of a post (photos, video and its preview), read before it is deleted so they can go too. */
+export async function filesOfPost(commentId: string): Promise<PostFiles> {
   const admin = createSupabaseAdminClient();
-  if (!admin) return [];
-  const { data } = await admin.from('community_comments').select('photos').eq('id', commentId).maybeSingle();
-  const photos = (data?.photos ?? []) as { path?: unknown }[];
-  return photos.map((p) => p.path).filter((p): p is string => typeof p === 'string');
+  if (!admin) return { photos: [], videos: [] };
+  const { data } = await admin
+    .from('community_comments')
+    .select('photos, video')
+    .eq('id', commentId)
+    .maybeSingle();
+  const text = (v: unknown): v is string => typeof v === 'string';
+  const photos = ((data?.photos ?? []) as { path?: unknown }[]).map((p) => p.path).filter(text);
+  const video = (data?.video ?? null) as { path?: unknown; poster?: unknown } | null;
+  return {
+    photos: [...photos, video?.poster].filter(text),
+    videos: [video?.path].filter(text),
+  };
 }
 
-/** Deletes photo files. A failure only leaves an unused file behind, so it never blocks the action. */
-export async function removePhotoFiles(paths: string[]) {
+/** Deletes files. A failure only leaves an unused file behind, so it never blocks the action. */
+export async function removeFiles(bucket: string, paths: string[]) {
   if (!paths.length) return;
   const admin = createSupabaseAdminClient();
-  const { error } = (await admin?.storage.from(PHOTO_BUCKET).remove(paths)) ?? { error: null };
-  if (error) console.error('community_photo_remove_failed', error.message);
+  const { error } = (await admin?.storage.from(bucket).remove(paths)) ?? { error: null };
+  if (error) console.error('community_file_remove_failed', bucket, error.message);
 }
+export async function removePostFiles(files: PostFiles) {
+  await Promise.all([removeFiles(PHOTO_BUCKET, files.photos), removeFiles(VIDEO_BUCKET, files.videos)]);
+}
+export const removeAvatarFile = (path: string | null | undefined) =>
+  path ? removeFiles(AVATAR_BUCKET, [path]) : Promise.resolve();
 
 /**
- * Every photo of a member, before their account is deleted: Supabase refuses to delete an account
- * that still owns files.
+ * Every file of a member (photos, videos, profile photo), before their account is deleted:
+ * Supabase refuses to delete an account that still owns files.
  */
-export async function removeMemberPhotos(userId: string) {
+export async function removeMemberFiles(userId: string) {
   const admin = createSupabaseAdminClient();
   if (!admin) return;
-  const bucket = admin.storage.from(PHOTO_BUCKET);
-  for (let round = 0; round < 50; round++) {
-    const { data, error } = await bucket.list(userId, { limit: 100 });
-    if (error) throw new Error(`Photo list failed (${error.message})`);
-    if (!data?.length) return;
-    const { error: removeError } = await bucket.remove(data.map((f) => `${userId}/${f.name}`));
-    if (removeError) throw new Error(`Photo removal failed (${removeError.message})`);
+  for (const name of [PHOTO_BUCKET, VIDEO_BUCKET, AVATAR_BUCKET]) {
+    const bucket = admin.storage.from(name);
+    for (let round = 0; round < 50; round++) {
+      const { data, error } = await bucket.list(userId, { limit: 100 });
+      if (error) throw new Error(`File list failed (${name}: ${error.message})`);
+      if (!data?.length) break;
+      const { error: removeError } = await bucket.remove(data.map((f) => `${userId}/${f.name}`));
+      if (removeError) throw new Error(`File removal failed (${name}: ${removeError.message})`);
+    }
   }
 }
 

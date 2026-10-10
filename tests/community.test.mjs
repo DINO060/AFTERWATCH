@@ -199,3 +199,31 @@ test('a text becomes plain parts and clickable #tags, in order', () => {
   assert.deepEqual(splitTags('#JJK'), [{ tag: 'jjk', text: '#JJK' }]);
   assert.deepEqual(splitTags('rien ici'), [{ text: 'rien ici' }]);
 });
+
+test('videos: the format inside an MP4 is found, so iPhone HEVC can be refused', async () => {
+  const { mp4Formats } = await import('../lib/mp4.ts');
+  const box = (type, ...children) => {
+    const body = Buffer.concat(children);
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(8 + body.length);
+    head.write(type, 4, 'ascii');
+    return Buffer.concat([head, body]);
+  };
+  const stsd = (...formats) => {
+    const entries = formats.map((f) => box(f, Buffer.alloc(16)));
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(formats.length, 4);
+    return box('stsd', head, ...entries);
+  };
+  const movie = (...formats) =>
+    Buffer.concat([
+      box('ftyp', Buffer.from('isom0000')),
+      box('mdat', Buffer.from('hvc1 inside the picture data is not a format')),
+      box('moov', box('trak', box('mdia', box('minf', box('stbl', stsd(...formats)))))),
+    ]);
+  const read = (buf) => mp4Formats(new DataView(buf.buffer, buf.byteOffset, buf.byteLength));
+  assert.deepEqual(read(movie('avc1')), ['avc1']);
+  assert.deepEqual(read(movie('hvc1')), ['hvc1']);
+  assert.deepEqual(read(movie('avc1', 'mp4a')), ['avc1', 'mp4a']);
+  assert.deepEqual(read(Buffer.from('not a video at all')), []);
+});

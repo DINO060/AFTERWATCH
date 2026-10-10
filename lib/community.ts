@@ -39,8 +39,14 @@ export const RECO_MAX = 500;
 export const POST_MAX = 2000;
 export const PHOTOS_MAX = 4;
 export const PHOTO_BUCKET = 'community-photos';
+export const VIDEO_BUCKET = 'community-videos';
+export const AVATAR_BUCKET = 'avatars';
+export const VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+export const VIDEO_MAX_SECONDS = 120;
 /** A photo of a post, in the member's own folder of the photo bucket. */
 export type Photo = { path: string; w: number; h: number };
+/** A post's video, its preview image (in the photo bucket), size and length in seconds. */
+export type Video = { path: string; poster: string; w: number; h: number; duration: number };
 export type Debrief = {
   id: string;
   parentId: string | null;
@@ -50,6 +56,9 @@ export type Debrief = {
   mine: boolean;
   body: string;
   photos: Photo[];
+  video?: Video | null;
+  /** The author's profile photo, in the avatar bucket. */
+  avatar?: string | null;
   tags: string[];
   spoiler: Spoiler;
   createdAt: string;
@@ -77,6 +86,8 @@ export type FeedItem = Omit<Debrief, 'body' | 'parentId' | 'replies'> & {
   body: string | null;
   /** How many photos the post has, even while a spoiler's photos are not sent. */
   photoCount: number;
+  /** Whether the post has a video, even while a spoiler's video is not sent. */
+  hasVideo?: boolean;
   replyCount: number;
   inList: boolean;
   target: TargetRef & { title: string; poster: string; backdrop: string; year: string };
@@ -116,8 +127,8 @@ export function splitTags(text: string): ({ text: string } | { tag: string; text
 }
 
 /** The public address of a post's photo. */
-export function photoUrl(supabaseUrl: string, path: string): string {
-  return `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/${PHOTO_BUCKET}/${path}`;
+export function photoUrl(supabaseUrl: string, path: string, bucket = PHOTO_BUCKET): string {
+  return `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/${bucket}/${path}`;
 }
 
 export type SeasonInfo = { season: number; episodes: number };

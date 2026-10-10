@@ -1761,6 +1761,21 @@ h1 {
 .dx-avatar.round {
   border-radius: 999px;
 }
+.dx-avatar.lg {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  font-size: 28px;
+}
+.dx-avatar.lg.round {
+  border-radius: 999px;
+}
+/* A profile photo in place of the letter. */
+.dx-avatar.photo {
+  display: block;
+  object-fit: cover;
+  background: var(--secondary);
+}
 .dx-icon {
   display: grid;
   place-items: center;
@@ -2525,6 +2540,54 @@ h1 {
 .px-embed-add.done {
   border-color: rgba(76, 211, 138, 0.45);
   color: #7fe0a9;
+}
+/* A video: its preview image until play, never cropped, at most 520 px high. */
+.px-video {
+  max-height: 520px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #000;
+}
+.px-video video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.px-video-draft {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #000;
+}
+.px-video-draft video {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+}
+.px-video-draft > button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+}
+.px-video-draft > span {
+  display: block;
+  padding: 6px 10px;
+  background: var(--card);
+  font-size: 12px;
+  color: var(--muted-foreground);
 }
 /* Writing: tools, emojis, chosen photos, the ring of characters left. */
 .px-tool {
@@ -3416,6 +3479,16 @@ h1 {
   color: #ff8a8a;
   font-weight: 700;
 }
+.dx-progress {
+  color: #ff8572;
+}
+.dx-composer .px-video-draft {
+  max-width: 240px;
+  margin-left: 40px;
+}
+.dx-composer .px-video-draft video {
+  max-height: 140px;
+}
 /* Photos added to a reply: small squares above the input, like X. */
 .dx-composer .px-draft {
   grid-template-columns: repeat(4, 72px);
@@ -3933,4 +4006,60 @@ h1 {
 }
 .dx-case .dx-body {
   margin-top: 2px;
+}
+
+/* ---------- Mon compte: the profile photo ---------- */
+.avatar-setting {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+.avatar-setting-photo {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+.avatar-setting-photo:disabled {
+  opacity: 0.7;
+}
+.avatar-setting-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--card);
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.avatar-setting-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.avatar-setting-text strong {
+  font-size: 15px;
+}
+.avatar-setting-text > span {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.avatar-setting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.avatar-badge.photo {
+  display: block;
+  object-fit: cover;
 }

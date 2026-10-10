@@ -7,8 +7,9 @@ import {
   ensureTarget,
   episodeGuide,
   fromDatabase,
-  photosOfPost,
-  removePhotoFiles,
+  filesOfPost,
+  removeAvatarFile,
+  removePostFiles,
 } from '@/lib/community-server';
 import { extractTags, type TargetRef } from '@/lib/community';
 
@@ -32,6 +33,13 @@ const photo = z.object({
   w: z.number().int().min(1).max(4000),
   h: z.number().int().min(1).max(4000),
 });
+const video = z.object({
+  path: z.string().max(120),
+  poster: z.string().max(120),
+  w: z.number().int().min(1).max(4000),
+  h: z.number().int().min(1).max(4000),
+  duration: z.number().positive().max(121),
+});
 const action = z.discriminatedUnion('op', [
   z.object({ op: z.literal('rate'), target: uuid, score: z.number().int().min(1).max(10).nullable() }),
   // A post, a reply or a recommendation. From the feed it names the work (and episode) it is about.
@@ -45,8 +53,11 @@ const action = z.discriminatedUnion('op', [
     spoiler,
     score: z.number().int().min(1).max(10).nullable(),
     photos: z.array(photo).max(4),
+    video: video.nullable().default(null),
   }),
   z.object({ op: z.literal('editPost'), comment: uuid, body, spoiler }),
+  // Moderators only (checked by the database): the profile photo of a reported post's author.
+  z.object({ op: z.literal('removeAvatar'), comment: uuid }),
   z.object({ op: z.literal('delete'), comment: uuid }),
   z.object({
     op: z.literal('react'),
@@ -186,7 +197,7 @@ export async function POST(request: Request) {
           : null;
       const targetId = a.target ?? target?.id;
       if (!targetId) throw new CommunityFailure('badTarget', 400);
-      const post = await call(supabase, 'community_publish', {
+      const post = await call(supabase, 'community_post', {
         p_target: targetId,
         p_parent: a.parent,
         p_kind: a.kind,
@@ -196,6 +207,7 @@ export async function POST(request: Request) {
         // The #tags come from the text itself; the database checks them again.
         p_tags: extractTags(a.body),
         p_photos: a.photos,
+        p_video: a.video,
       });
       result = { post, target };
     } else if (a.op === 'editPost')
@@ -206,9 +218,9 @@ export async function POST(request: Request) {
         p_tags: extractTags(a.body),
       });
     else if (a.op === 'delete') {
-      const photos = await photosOfPost(a.comment);
+      const files = await filesOfPost(a.comment);
       await call(supabase, 'community_delete_comment', { p_comment: a.comment });
-      await removePhotoFiles(photos);
+      await removePostFiles(files);
     } else if (a.op === 'react')
       result = await call(supabase, 'community_react', { p_comment: a.comment, p_reaction: a.reaction });
     else if (a.op === 'report')
@@ -235,9 +247,12 @@ export async function POST(request: Request) {
       result = await call(supabase, 'community_discover', { p_works: a.works, p_limit: 4 });
     else if (a.op === 'reveal') result = await call(supabase, 'community_reveal', { p_ids: a.ids });
     else if (a.op === 'resolve') {
-      const photos = a.action === 'remove' ? await photosOfPost(a.comment) : [];
+      const files = a.action === 'remove' ? await filesOfPost(a.comment) : { photos: [], videos: [] };
       await call(supabase, 'community_resolve', { p_comment: a.comment, p_action: a.action, p_ban: a.ban });
-      await removePhotoFiles(photos);
+      await removePostFiles(files);
+    } else if (a.op === 'removeAvatar') {
+      const previous = await call(supabase, 'community_remove_avatar', { p_comment: a.comment });
+      await removeAvatarFile(typeof previous === 'string' ? previous : null);
     }
     return Response.json(result, { headers });
   } catch (e) {

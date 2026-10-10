@@ -858,7 +858,13 @@ export default function WatchApp({
                     recovery={recovery}
                     onProfileChange={refreshAccount}
                   />
-                  {auth.user && <UsernameSettings key={`name-${auth.user.id}`} />}
+                  {auth.user && (
+                    <UsernameSettings
+                      key={`name-${auth.user.id}`}
+                      userId={auth.user.id}
+                      onChange={refreshAccount}
+                    />
+                  )}
                   {auth.user && <NotificationSettings key={auth.user.id} />}
                   {auth.user && <DataSettings key={`data-${auth.user.id}`} userId={auth.user.id} />}
                   <div className="install-row">

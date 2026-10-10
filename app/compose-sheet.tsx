@@ -1,8 +1,8 @@
 'use client';
-// "Nouveau post": the work (and episode) it is about, text with emojis and #tags, up to 4 photos,
-// a spoiler level, and optionally a recommendation with a score. Full screen on phones.
+// "Nouveau post": the work (and episode) it is about, text with emojis and #tags, up to 4 photos
+// or one video, a spoiler level, and optionally a recommendation with a score. Full screen on phones.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, LoaderCircle, Search, X } from 'lucide-react';
+import { Clapperboard, ImagePlus, LoaderCircle, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -25,11 +25,22 @@ import {
   type Spoiler,
   type Target,
   type TargetRef,
+  type Video,
 } from '@/lib/community';
 import { discardPhotos, uploadPhotos } from '@/lib/photos';
+import { VideoFailure, discardVideo, uploadVideo } from '@/lib/videos';
 import type { Media } from '@/lib/watch';
 import { Avatar, Poster, ScoreBar, Switch, UsernameDialog, api, post, problem } from './community-ui';
-import { CharRing, EmojiButton, LevelMenu, PhotoDraft, insertAtCursor, usePhotoDraft } from './post-ui';
+import {
+  CharRing,
+  EmojiButton,
+  LevelMenu,
+  PhotoDraft,
+  VideoDraft,
+  insertAtCursor,
+  usePhotoDraft,
+  useVideoDraft,
+} from './post-ui';
 import { useI18n } from './i18n-provider';
 
 type Kind = TargetRef['kind'];
@@ -67,12 +78,16 @@ export default function ComposeSheet({
   const [recommend, setRecommend] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [username, setUsername] = useState<string | null | undefined>(undefined);
+  const [avatar, setAvatar] = useState<string | null>(null);
   const [askName, setAskName] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const photos = usePhotoDraft((message) => toast.error(message));
+  const clip = useVideoDraft((message) => toast.error(message, { duration: 9000 }));
   const field = useRef<HTMLTextAreaElement>(null);
   const files = useRef<HTMLInputElement>(null);
+  const videoFile = useRef<HTMLInputElement>(null);
   const term = query.trim();
   const key = `${kind}:${term}`;
   const searching = term.length >= 2 && found.key !== key;
@@ -80,7 +95,10 @@ export default function ComposeSheet({
   useEffect(() => {
     fetch('/api/profile', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data) => setUsername(data.username ?? null))
+      .then((data) => {
+        setUsername(data.username ?? null);
+        setAvatar(data.avatar ?? null);
+      })
       .catch(() => setUsername(null));
   }, []);
 
@@ -122,7 +140,8 @@ export default function ComposeSheet({
     (Number.isInteger(episodeNumber) &&
       episodeNumber >= 1 &&
       (work?.kind !== 'series' || (Number.isInteger(seasonNumber) && seasonNumber >= 0)));
-  const ready = !!work && episodeValid && length <= max && (length > 0 || photos.items.length > 0);
+  const ready =
+    !!work && episodeValid && length <= max && (length > 0 || photos.items.length > 0 || !!clip.item);
   const levels: Spoiler[] = onEpisode ? ['none', 'episode', 'later'] : ['none', 'episode'];
   const what = onEpisode
     ? work?.kind === 'series'
@@ -130,7 +149,7 @@ export default function ComposeSheet({
       : c.theEpisode(episodeNumber || 0)
     : c.theWork;
   const meta = (item: CatalogItem) => [t.kinds[item.kind], item.catalog.year].filter(Boolean).join(' · ');
-  const dirty = length > 0 || photos.items.length > 0;
+  const dirty = length > 0 || photos.items.length > 0 || !!clip.item;
   const close = () => (dirty && !busy ? setConfirmClose(true) : !busy && onClose());
 
   const publish = async (named = false) => {
@@ -142,9 +161,14 @@ export default function ComposeSheet({
     }
     setBusy(true);
     let sent: string[] = [];
+    let sentVideo: Video | null = null;
     try {
       const uploaded = photos.items.length ? await uploadPhotos(userId, photos.items) : [];
       sent = uploaded.map((p) => p.path);
+      setProgress(0);
+      sentVideo = clip.item
+        ? await uploadVideo(userId, clip.item, (share) => setProgress(Math.round(share * 100)))
+        : null;
       const target: TargetRef = {
         ...ref,
         season: onEpisode && work.kind === 'series' ? seasonNumber : null,
@@ -160,12 +184,15 @@ export default function ComposeSheet({
         spoiler: levels.includes(level) ? level : 'none',
         score: isReco ? score : null,
         photos: uploaded,
+        video: sentVideo,
       });
       sent = [];
+      sentVideo = null;
       const tg = data.target;
       onPublished({
         ...data.post,
         photoCount: data.post.photos.length,
+        hasVideo: !!data.post.video,
         replyCount: 0,
         inList: collection.some((x) => x.catalog?.source === tg.source && x.catalog.id === tg.sourceId),
         target: {
@@ -181,12 +208,17 @@ export default function ComposeSheet({
         },
       });
       photos.clear();
+      clip.clear();
       toast.success(m.published);
     } catch (e) {
-      // Photos sent for a post that failed are removed again; everything typed stays.
-      await discardPhotos(sent);
+      // Files sent for a post that failed are removed again; everything typed stays.
+      await Promise.all([discardPhotos(sent), discardVideo(sentVideo)]);
       toast.error(
-        e instanceof Error && e.message === 'upload' ? m.photoErrors.upload : problem(e, c.actionFailed),
+        e instanceof VideoFailure
+          ? m.videoErrors.upload
+          : e instanceof Error && e.message === 'upload'
+            ? m.photoErrors.upload
+            : problem(e, c.actionFailed),
       );
     } finally {
       setBusy(false);
@@ -204,13 +236,13 @@ export default function ComposeSheet({
           <DialogDescription className="sr-only">{m.pickWork}</DialogDescription>
           <button type="button" className="rx-post" disabled={!ready || busy} onClick={() => publish()}>
             {busy ? <LoaderCircle size={16} className="loading-icon" /> : null}
-            {busy ? m.sending : m.publish}
+            {busy ? (clip.item ? m.sendingVideo(progress) : m.sending) : m.publish}
           </button>
         </header>
 
         <div className="rx-body">
           <div className="rx-side">
-            <Avatar name={username || null} round />
+            <Avatar name={username || null} avatar={avatar} round />
           </div>
           <div className="rx-main">
             {work ? (
@@ -352,6 +384,7 @@ export default function ComposeSheet({
               }}
             />
             <PhotoDraft items={photos.items} onRemove={photos.remove} />
+            <VideoDraft item={clip.item} onRemove={clip.clear} />
             {photos.items.length > 0 && <p className="rx-note">{m.photoCount(photos.items.length)}</p>}
 
             {work && !onEpisode && (
@@ -386,14 +419,35 @@ export default function ComposeSheet({
               e.target.value = '';
             }}
           />
+          <input
+            ref={videoFile}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime,.mp4,.m4v,.mov,.webm"
+            hidden
+            onChange={(e) => {
+              clip.pick(e.target.files);
+              e.target.value = '';
+            }}
+          />
           <button
             type="button"
             className="px-tool"
             aria-label={m.addPhoto}
-            disabled={photos.busy || photos.items.length >= PHOTOS_MAX}
+            title={clip.item ? m.photosOrVideo : m.addPhoto}
+            disabled={photos.busy || photos.items.length >= PHOTOS_MAX || !!clip.item}
             onClick={() => files.current?.click()}
           >
             {photos.busy ? <LoaderCircle size={19} className="loading-icon" /> : <ImagePlus size={20} />}
+          </button>
+          <button
+            type="button"
+            className="px-tool"
+            aria-label={m.addVideo}
+            title={photos.items.length ? m.photosOrVideo : m.addVideo}
+            disabled={clip.busy || !!clip.item || photos.items.length > 0}
+            onClick={() => videoFile.current?.click()}
+          >
+            {clip.busy ? <LoaderCircle size={19} className="loading-icon" /> : <Clapperboard size={20} />}
           </button>
           <EmojiButton size={20} onPick={(emoji) => insertAtCursor(field.current, body, emoji, setBody)} />
           <span className="rx-spacer" />

@@ -27,7 +27,10 @@ export async function GET(request: Request) {
           .maybeSingle(),
         'collection',
       ),
-      read(supabase.from('profiles').select('username').eq('user_id', user.id).maybeSingle(), 'profile'),
+      read(
+        supabase.from('profiles').select('username, avatar_path').eq('user_id', user.id).maybeSingle(),
+        'profile',
+      ),
       read(
         supabase
           .from('notification_prefs')
@@ -55,7 +58,7 @@ export async function GET(request: Request) {
             admin
               .from('community_comments')
               .select(
-                'kind, body, photos, tags, spoiler, created_at, edited_at, deleted_at, removed, parent_id, target:community_targets(kind, title, season, episode)',
+                'kind, body, photos, video, tags, spoiler, created_at, edited_at, deleted_at, removed, parent_id, target:community_targets(kind, title, season, episode)',
               )
               .eq('author_id', user.id)
               .order('created_at'),

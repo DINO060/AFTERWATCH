@@ -31,20 +31,40 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   PHOTOS_MAX,
+  VIDEO_BUCKET,
   photoUrl,
   splitTags,
   topReactions,
   type Photo,
   type Reaction,
   type Spoiler,
+  type Video,
 } from '@/lib/community';
 import { EMOJI_GROUPS, EMOJI_ICONS, type EmojiGroup } from '@/lib/emojis';
 import { PhotoFailure, preparePhoto, type PreparedPhoto } from '@/lib/photos';
+import { VideoFailure, prepareVideo, type PreparedVideo } from '@/lib/videos';
 import { getSupabaseConfig } from '@/lib/supabase/config';
 import { Avatar, useAgo } from './community-ui';
 import { useI18n } from './i18n-provider';
 
 export const photoSrc = (path: string) => photoUrl(getSupabaseConfig()?.url ?? '', path);
+const videoSrc = (path: string) => photoUrl(getSupabaseConfig()?.url ?? '', path, VIDEO_BUCKET);
+
+/**
+ * A post's video: its preview image until play is pressed, so nothing heavy downloads before.
+ * It keeps its shape (from 9:16 to 16:9) within 520 px of height.
+ */
+export function VideoPlayer({ video }: { video: Video }) {
+  const ratio = Math.min(16 / 9, Math.max(9 / 16, video.w / video.h));
+  return (
+    <div
+      className="px-video"
+      style={{ aspectRatio: String(ratio), width: `min(100%, ${Math.round(520 * ratio)}px)` }}
+    >
+      <video src={videoSrc(video.path)} poster={photoSrc(video.poster)} controls playsInline preload="none" />
+    </div>
+  );
+}
 
 /** Text with its #tags as buttons. */
 export function RichText({
@@ -138,6 +158,7 @@ export function SpoilerCover({
   title,
   reason,
   photoCount,
+  hasVideo,
   backdrop,
   busy,
   onShow,
@@ -145,17 +166,17 @@ export function SpoilerCover({
   title: string;
   reason: string;
   photoCount: number;
+  hasVideo?: boolean;
   backdrop?: string;
   busy?: boolean;
   onShow: () => void;
 }) {
   const { t } = useI18n();
   const h = t.community.hub;
+  const media = photoCount > 0 || hasVideo;
   return (
-    <div className={`px-spoiler${photoCount ? ' with-photos' : ''}`}>
-      {photoCount > 0 && backdrop ? (
-        <img className="px-spoiler-bg" src={backdrop} alt="" aria-hidden />
-      ) : null}
+    <div className={`px-spoiler${media ? ' with-photos' : ''}`}>
+      {media && backdrop ? <img className="px-spoiler-bg" src={backdrop} alt="" aria-hidden /> : null}
       <div className="px-spoiler-lines" aria-hidden>
         <span />
         <span />
@@ -172,6 +193,7 @@ export function SpoilerCover({
         <span>
           {reason}
           {photoCount > 0 ? ` · ${h.hiddenPhotos(photoCount)}` : ''}
+          {hasVideo ? ` · ${h.hiddenVideo}` : ''}
         </span>
         <button type="button" onClick={onShow} disabled={busy}>
           {busy ? <LoaderCircle size={14} className="loading-icon" /> : h.show}
@@ -184,6 +206,7 @@ export function SpoilerCover({
 export type PostData = {
   id: string;
   username: string | null;
+  avatar?: string | null;
   createdAt: string;
   edited: boolean;
   deleted: boolean;
@@ -241,7 +264,7 @@ export function PostRow({
   return (
     <article className={`px-row${reply ? ' reply' : ''}${thread ? ' thread' : ''}`}>
       <div className="px-side">
-        <Avatar name={post.username} round size={reply ? 'sm' : 'md'} />
+        <Avatar name={post.username} avatar={post.avatar} round size={reply ? 'sm' : 'md'} />
         {thread && <span className="px-line" aria-hidden />}
       </div>
       <div className="px-main">
@@ -584,5 +607,62 @@ export function LevelMenu({
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** A video chosen for a post, checked (length, size, format) right away. */
+export function useVideoDraft(onError: (message: string) => void) {
+  const { t } = useI18n();
+  const m = t.community.compose;
+  const [item, setItem] = useState<PreparedVideo | null>(null);
+  const [busy, setBusy] = useState(false);
+  const itemRef = useRef(item);
+  useEffect(() => {
+    itemRef.current = item;
+  }, [item]);
+  const release = (v: PreparedVideo | null) => {
+    if (!v) return;
+    URL.revokeObjectURL(v.preview);
+    URL.revokeObjectURL(v.poster.preview);
+  };
+  useEffect(() => () => release(itemRef.current), []);
+  const pick = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const ready = await prepareVideo(file);
+      setItem((current) => {
+        release(current);
+        return ready;
+      });
+    } catch (e) {
+      onError(m.videoErrors[e instanceof VideoFailure ? e.key : 'unreadable']);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const clear = () =>
+    setItem((current) => {
+      release(current);
+      return null;
+    });
+  return { item, busy, pick, clear };
+}
+
+export function VideoDraft({ item, onRemove }: { item: PreparedVideo | null; onRemove: () => void }) {
+  const { t, locale } = useI18n();
+  const m = t.community.compose;
+  if (!item) return null;
+  const seconds = item.duration.toLocaleString(locale, { maximumFractionDigits: 1 });
+  const size = (item.file.size / 1024 / 1024).toLocaleString(locale, { maximumFractionDigits: 1 });
+  return (
+    <div className="px-video-draft">
+      <video src={item.preview} poster={item.poster.preview} controls muted playsInline preload="metadata" />
+      <button type="button" aria-label={m.removeVideo} onClick={onRemove}>
+        <X size={15} />
+      </button>
+      <span>{m.videoHint(seconds, size)}</span>
+    </div>
   );
 }

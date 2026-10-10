@@ -1,6 +1,16 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { ArrowLeft, ArrowUp, Check, ImagePlus, LoaderCircle, Send, Share, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowUp,
+  Check,
+  Clapperboard,
+  ImagePlus,
+  LoaderCircle,
+  Send,
+  Share,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -27,8 +37,10 @@ import {
   type Target,
   type TargetReaction,
   type TargetRef,
+  type Video,
 } from '@/lib/community';
 import { discardPhotos, uploadPhotos } from '@/lib/photos';
+import { VideoFailure, discardVideo, uploadVideo } from '@/lib/videos';
 import type { Media } from '@/lib/watch';
 import {
   Avatar,
@@ -46,12 +58,15 @@ import {
   EmojiButton,
   LevelMenu,
   PhotoDraft,
+  VideoDraft,
+  VideoPlayer,
   PhotoGrid,
   PostRow,
   RichText,
   SpoilerCover,
   insertAtCursor,
   usePhotoDraft,
+  useVideoDraft,
 } from './post-ui';
 
 type Thread = { comments: Debrief[]; total: number; hasMore: boolean };
@@ -101,16 +116,20 @@ export default function DiscussionView({
   const [openReplies, setOpenReplies] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState<Draft>(blank);
   const [sending, setSending] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
   const [askName, setAskName] = useState(false);
   const [toDelete, setToDelete] = useState<Debrief | null>(null);
   const [toReport, setToReport] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null | undefined>(undefined);
+  const [avatar, setAvatar] = useState<string | null>(null);
   const [fresh, setFresh] = useState(0);
   const photos = usePhotoDraft((message) => toast.error(message));
+  const clip = useVideoDraft((message) => toast.error(message, { duration: 9000 }));
   // Messages counted when the list was last loaded: the difference is "N nouveaux messages".
   const baseline = useRef(0);
   const field = useRef<HTMLTextAreaElement>(null);
   const files = useRef<HTMLInputElement>(null);
+  const videoFile = useRef<HTMLInputElement>(null);
   const listHead = useRef<HTMLDivElement>(null);
   const refKey = refPath(refTarget);
   const workKey = refPath(workOf(refTarget));
@@ -196,7 +215,10 @@ export default function DiscussionView({
     if (!signedIn) return;
     fetch('/api/profile', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => setUsername(data.username ?? null))
+      .then((data) => {
+        setUsername(data.username ?? null);
+        setAvatar(data.avatar ?? null);
+      })
       .catch(() => setUsername(null));
   }, [signedIn]);
 
@@ -370,13 +392,15 @@ export default function DiscussionView({
     if (!target || !userId || sending) return;
     const text = draft.body.trim();
     const withPhotos = draft.mode !== 'edit' ? photos.items : [];
-    if ((!text && !withPhotos.length) || text.length > POST_MAX) return;
+    const withVideo = draft.mode !== 'edit' ? clip.item : null;
+    if ((!text && !withPhotos.length && !withVideo) || text.length > POST_MAX) return;
     if (username === null && !named) {
       setAskName(true);
       return;
     }
     setSending(true);
     let sent: string[] = [];
+    let sentVideo: Video | null = null;
     try {
       let d: Debrief;
       if (draft.mode === 'edit') {
@@ -389,6 +413,9 @@ export default function DiscussionView({
       } else {
         const uploaded = withPhotos.length ? await uploadPhotos(userId, withPhotos) : [];
         sent = uploaded.map((p) => p.path);
+        sentVideo = withVideo
+          ? await uploadVideo(userId, withVideo, (share) => setProgress(Math.round(share * 100)))
+          : null;
         d = (
           await post<{ post: Debrief }>({
             op: 'publish',
@@ -400,25 +427,31 @@ export default function DiscussionView({
             spoiler: draft.level,
             score: null,
             photos: uploaded,
+            video: sentVideo,
           })
         ).post;
         sent = [];
+        sentVideo = null;
         photos.clear();
+        clip.clear();
       }
       published(d, draft.mode, draft.parent);
       setDraft(blank);
       if (field.current) field.current.style.height = '';
       if (draft.mode === 'edit') toast.success(c.published);
     } catch (e) {
-      // Photos sent for a message that failed are removed again; the text stays.
-      await discardPhotos(sent);
+      // Files sent for a message that failed are removed again; the text stays.
+      await Promise.all([discardPhotos(sent), discardVideo(sentVideo)]);
       toast.error(
-        e instanceof Error && e.message === 'upload'
-          ? c.compose.photoErrors.upload
-          : problem(e, c.actionFailed),
+        e instanceof VideoFailure
+          ? c.compose.videoErrors.upload
+          : e instanceof Error && e.message === 'upload'
+            ? c.compose.photoErrors.upload
+            : problem(e, c.actionFailed),
       );
     } finally {
       setSending(false);
+      setProgress(null);
     }
   };
   const submit = (event: FormEvent) => {
@@ -509,6 +542,7 @@ export default function DiscussionView({
           title={label}
           reason={veilReason(d)}
           photoCount={d.photos.length}
+          hasVideo={!!d.video}
           backdrop={target?.backdrop || target?.poster}
           onShow={() => setRevealed((r) => ({ ...r, [d.id]: true }))}
         />
@@ -527,6 +561,7 @@ export default function DiscussionView({
         )}
         {d.body && <RichText text={d.body} onTag={onTag} />}
         <PhotoGrid photos={d.photos} />
+        {d.video && <VideoPlayer video={d.video} />}
       </>
     );
   };
@@ -574,7 +609,9 @@ export default function DiscussionView({
   const levels: Spoiler[] = refTarget.episode === null ? ['none', 'episode'] : ['none', 'episode', 'later'];
   const length = draft.body.trim().length;
   const canSend =
-    !sending && length <= POST_MAX && (length > 0 || (draft.mode !== 'edit' && photos.items.length > 0));
+    !sending &&
+    length <= POST_MAX &&
+    (length > 0 || (draft.mode !== 'edit' && (photos.items.length > 0 || !!clip.item)));
 
   return (
     <div className="dx">
@@ -743,9 +780,12 @@ export default function DiscussionView({
 
       {target && (
         <form className="dx-composer" onSubmit={submit}>
-          {(draft.mode !== 'new' || length > POST_MAX - 200) && (
+          {(draft.mode !== 'new' || length > POST_MAX - 200 || progress !== null) && (
             <div className="dx-composer-context">
               <span>
+                {progress !== null && (
+                  <strong className="dx-progress">{c.compose.sendingVideo(progress)} </strong>
+                )}
                 {draft.mode === 'reply'
                   ? c.replyingTo(draft.parent?.username ?? c.deletedAccount)
                   : draft.mode === 'edit'
@@ -771,9 +811,10 @@ export default function DiscussionView({
             </div>
           )}
           {draft.mode !== 'edit' && <PhotoDraft items={photos.items} onRemove={photos.remove} />}
+          {draft.mode !== 'edit' && <VideoDraft item={clip.item} onRemove={clip.clear} />}
           <div className="dx-composer-row">
             <span className="dx-composer-avatar">
-              <Avatar name={username || null} round size="sm" />
+              <Avatar name={username || null} avatar={avatar} round size="sm" />
             </span>
             <textarea
               ref={field}
@@ -815,16 +856,47 @@ export default function DiscussionView({
                 e.target.value = '';
               }}
             />
+            <input
+              ref={videoFile}
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime,.mp4,.m4v,.mov,.webm"
+              hidden
+              onChange={(e) => {
+                clip.pick(e.target.files);
+                e.target.value = '';
+              }}
+            />
             {draft.mode !== 'edit' && (
-              <button
-                type="button"
-                className="px-tool"
-                aria-label={c.compose.addPhoto}
-                disabled={photos.busy || photos.items.length >= PHOTOS_MAX}
-                onClick={() => files.current?.click()}
-              >
-                {photos.busy ? <LoaderCircle size={18} className="loading-icon" /> : <ImagePlus size={19} />}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="px-tool"
+                  aria-label={c.compose.addPhoto}
+                  title={clip.item ? c.compose.photosOrVideo : c.compose.addPhoto}
+                  disabled={photos.busy || photos.items.length >= PHOTOS_MAX || !!clip.item}
+                  onClick={() => files.current?.click()}
+                >
+                  {photos.busy ? (
+                    <LoaderCircle size={18} className="loading-icon" />
+                  ) : (
+                    <ImagePlus size={19} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="px-tool"
+                  aria-label={c.compose.addVideo}
+                  title={photos.items.length ? c.compose.photosOrVideo : c.compose.addVideo}
+                  disabled={clip.busy || !!clip.item || photos.items.length > 0}
+                  onClick={() => videoFile.current?.click()}
+                >
+                  {clip.busy ? (
+                    <LoaderCircle size={18} className="loading-icon" />
+                  ) : (
+                    <Clapperboard size={19} />
+                  )}
+                </button>
+              </>
             )}
             <EmojiButton
               onPick={(emoji) =>

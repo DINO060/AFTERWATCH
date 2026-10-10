@@ -22,6 +22,7 @@ import { DISPLAY_NAME_MAX } from '@/lib/display-name';
 import type { AccountUser, AuthMode } from './auth-panel';
 import InstallApp from './install-app';
 import { useI18n } from './i18n-provider';
+import { avatarSrc } from './community-ui';
 
 export type View =
   | 'home'
@@ -247,13 +248,21 @@ function AccountMenu({
     >
       <PopoverTrigger asChild>
         <button className="account-trigger" aria-label={t.shell.accountMenu}>
-          <span className="avatar-badge">{initials(user.displayName)}</span>
+          {user.avatar ? (
+            <img className="avatar-badge photo" src={avatarSrc(user.avatar)} alt="" />
+          ) : (
+            <span className="avatar-badge">{initials(user.displayName)}</span>
+          )}
           <ChevronDown size={14} aria-hidden="true" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={10} className="account-menu">
         <div className="account-id">
-          <span className="avatar-badge large">{initials(user.displayName)}</span>
+          {user.avatar ? (
+            <img className="avatar-badge large photo" src={avatarSrc(user.avatar)} alt="" />
+          ) : (
+            <span className="avatar-badge large">{initials(user.displayName)}</span>
+          )}
           <div>
             <strong>{user.displayName}</strong>
             {user.email && <small>{user.email}</small>}

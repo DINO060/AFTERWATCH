@@ -8,7 +8,9 @@ import { PGlite } from '@electric-sql/pglite';
 const migration = (name) =>
   fs.readFileSync(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8');
 const id = (n) => `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const [A, B, C, MOD, E, F, G, H, I, J, K, L, N, P] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map(id);
+const [A, B, C, MOD, E, F, G, H, I, J, K, L, N, P, Q, R] = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+].map(id);
 const db = new PGlite();
 
 async function as(user, query, params = []) {
@@ -69,10 +71,11 @@ test.before(async () => {
     '202610090001_community_hub.sql',
     '202610100001_community_v2.sql',
     '202610110001_community_threads.sql',
+    '202610120001_community_media.sql',
   ])
     await db.exec(migration(name));
   await db.exec(
-    `insert into auth.users (id) values ${[A, B, C, MOD, E, F, G, H, I, J, K, L, N, P].map((u) => `('${u}')`).join(', ')}`,
+    `insert into auth.users (id) values ${[A, B, C, MOD, E, F, G, H, I, J, K, L, N, P, Q, R].map((u) => `('${u}')`).join(', ')}`,
   );
   await db.exec(`insert into public.community_moderators (user_id) values ('${MOD}')`);
   for (const [user, name] of [
@@ -88,6 +91,8 @@ test.before(async () => {
     [L, 'leo'],
     [N, 'nia'],
     [P, 'pablo'],
+    [Q, 'quinn'],
+    [R, 'rosa'],
   ])
     await value(user, 'set_username', '$1', [name]);
 });
@@ -668,4 +673,113 @@ test('a deleted post loses its photos and tags', async () => {
   ]);
   assert.deepEqual(row, { photos: [], tags: [], body: '' });
   assert.equal((await timeline(N, { tag: 'gojo' })).items.length, 0);
+});
+
+// ---------- Profile photos and videos ----------
+const file = (user, n, ext) => `${user}/00000000-0000-4000-8000-${String(n).padStart(12, '0')}.${ext}`;
+const video = (user, n, o = {}) => ({
+  path: file(user, n, 'mp4'),
+  poster: file(user, n, 'webp'),
+  w: 1080,
+  h: 1920,
+  duration: 24.6,
+  ...o,
+});
+const post = (user, target, body, o = {}) =>
+  value(user, 'community_post', '$1, $2, $3, $4, $5, $6, $7, $8, $9', [
+    target,
+    o.parent ?? null,
+    o.kind ?? 'debrief',
+    body,
+    o.spoiler ?? 'none',
+    o.score ?? null,
+    o.tags ?? [],
+    JSON.stringify(o.photos ?? []),
+    o.video === undefined ? null : JSON.stringify(o.video),
+  ]);
+const postSql = `$1, null, 'debrief', 'x', 'none', null, '{}', $2, $3`;
+let withVideo;
+
+test('profile photos and videos go only into the member’s own folder', async () => {
+  const insert = `insert into storage.objects (bucket_id, name) values ($1, $2)`;
+  await as(Q, insert, ['avatars', file(Q, 1, 'webp')]);
+  await as(Q, insert, ['community-videos', file(Q, 1, 'mp4')]);
+  await rejects(Q, insert, ['avatars', file(R, 1, 'webp')], /row-level security/);
+  await rejects(Q, insert, ['community-videos', file(Q, 2, 'mov')], /row-level security/);
+  const buckets = await as('service', `select id, file_size_limit from storage.buckets order by id`);
+  assert.deepEqual(
+    buckets.map((b) => [b.id, Number(b.file_size_limit)]),
+    [
+      ['avatars', 1048576],
+      ['community-photos', 2097152],
+      ['community-videos', 104857600],
+    ],
+  );
+});
+
+test('a profile photo: own folder only, needs a username, shown next to posts', async () => {
+  await rejects(J, rpc('set_avatar', '$1'), [file(J, 1, 'webp')], /username_required/);
+  await rejects(Q, rpc('set_avatar', '$1'), [file(R, 1, 'webp')], /invalid_avatar/);
+  await rejects(Q, rpc('set_avatar', '$1'), [`${Q}/../x.webp`], /invalid_avatar/);
+  assert.deepEqual(await value(Q, 'set_avatar', '$1', [file(Q, 1, 'webp')]), {
+    avatar: file(Q, 1, 'webp'),
+    previous: null,
+  });
+  assert.equal((await value(Q, 'set_avatar', '$1', [file(Q, 2, 'jpg')])).previous, file(Q, 1, 'webp'));
+  const mine = await post(Q, T2, 'Avec ma photo');
+  assert.equal(mine.avatar, file(Q, 2, 'jpg'));
+  assert.equal(mine.username, 'quinn');
+  assert.equal(
+    (await one(R, 'select avatar_path from public.profiles where user_id = $1', [Q])).avatar_path,
+    file(Q, 2, 'jpg'),
+  );
+});
+
+test('a video: one per post instead of photos, 2 minutes, own folder, used once', async () => {
+  withVideo = await post(R, T2, 'Le plan final 🔥', { video: video(R, 1) });
+  assert.deepEqual(withVideo.video, video(R, 1));
+  await rejects(
+    R,
+    rpc('community_post', postSql),
+    [T2, JSON.stringify([photo(R, 1)]), JSON.stringify(video(R, 2))],
+    /invalid_video/,
+  );
+  await rejects(
+    R,
+    rpc('community_post', postSql),
+    [T2, '[]', JSON.stringify(video(R, 3, { duration: 150 }))],
+    /invalid_video/,
+  );
+  await rejects(R, rpc('community_post', postSql), [T2, '[]', JSON.stringify(video(Q, 4))], /invalid_video/);
+  await rejects(R, rpc('community_post', postSql), [T2, '[]', JSON.stringify(video(R, 1))], /invalid_video/);
+  await rejects(
+    R,
+    rpc('community_post', postSql),
+    [T2, '[]', JSON.stringify(video(R, 5, { poster: file(R, 5, 'mp4') }))],
+    /invalid_video/,
+  );
+  const only = await post(R, T2, '', { video: video(R, 6) });
+  assert.equal(only.body, '', 'a video alone is a post');
+});
+
+test('a spoiler’s video stays hidden in the timeline until revealed, and goes when deleted', async () => {
+  const hidden = await post(Q, T2, 'La fin', { spoiler: 'episode', video: video(Q, 7) });
+  const list = await value(N, 'community_timeline', `null, null, '[]', 0, 40`, []);
+  const item = list.items.find((i) => i.id === hidden.id);
+  assert.equal(item.video, null);
+  assert.equal(item.hasVideo, true);
+  assert.equal(list.items.find((i) => i.id === withVideo.id).video.path, file(R, 1, 'mp4'));
+  const revealed = await value(N, 'community_reveal', '$1', [[hidden.id]]);
+  assert.equal(revealed[hidden.id].video.path, file(Q, 7, 'mp4'));
+  await value(Q, 'community_delete_comment', '$1', [hidden.id]);
+  const row = await one('service', 'select video from public.community_comments where id = $1', [hidden.id]);
+  assert.equal(row.video, null);
+});
+
+test('moderators can remove the profile photo of a reported post’s author', async () => {
+  await rejects(N, rpc('community_remove_avatar', '$1'), [withVideo.id], /not_allowed/);
+  await value(R, 'set_avatar', '$1', [file(R, 9, 'webp')]);
+  assert.equal(await value(MOD, 'community_remove_avatar', '$1', [withVideo.id]), file(R, 9, 'webp'));
+  const queueRow = await one(R, 'select avatar_path from public.profiles where user_id = $1', [R]);
+  assert.equal(queueRow.avatar_path, null);
 });

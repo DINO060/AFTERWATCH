@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { AtSign, Check, Download, LoaderCircle, ShieldCheck, Trash2, X } from 'lucide-react';
+import { AtSign, Camera, Check, Download, LoaderCircle, ShieldCheck, Trash2, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -13,14 +13,19 @@ import {
 import { confirmsDeletion } from '@/lib/account';
 import { USERNAME_MAX, normalizeUsername, usernameProblem } from '@/lib/username';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
+import { PhotoFailure, discardAvatar, prepareAvatar, uploadAvatar } from '@/lib/photos';
+import { Avatar } from './community-ui';
 import { useI18n } from './i18n-provider';
 
 type Availability = { state: 'idle' | 'checking' | 'available' | 'unavailable'; text?: string };
 
-/** The public username other members will see. */
-export function UsernameSettings() {
+/** The public username and profile photo other members will see. */
+export function UsernameSettings({ userId, onChange }: { userId: string; onChange?: () => void }) {
   const { t } = useI18n();
   const [saved, setSaved] = useState<string | null | undefined>(undefined);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -35,6 +40,7 @@ export function UsernameSettings() {
         if (!live) return;
         setSaved(data.username);
         setValue(data.username || '');
+        setAvatar(data.avatar ?? null);
       })
       .catch(() => {
         if (!live) return;
@@ -102,6 +108,62 @@ export function UsernameSettings() {
   };
 
   const canSave = !busy && saved !== undefined && changed && check.state === 'available';
+
+  // The photo is cropped and sent from the browser, then recorded; the previous one is deleted.
+  const saveAvatar = async (path: string | null) => {
+    const r = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar: path }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || t.account.avatarFailed);
+    setAvatar(data.avatar ?? null);
+    onChange?.();
+  };
+  const pickAvatar = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file || avatarBusy) return;
+    setAvatarBusy(true);
+    setMessage('');
+    setError('');
+    let sent: string | null = null;
+    try {
+      const photo = await prepareAvatar(file);
+      URL.revokeObjectURL(photo.preview);
+      sent = await uploadAvatar(userId, photo);
+      await saveAvatar(sent);
+      sent = null;
+      setMessage(t.account.avatarSaved);
+    } catch (e) {
+      if (sent) await discardAvatar(sent);
+      setError(
+        e instanceof PhotoFailure
+          ? e.key === 'upload'
+            ? t.account.avatarFailed
+            : t.community.compose.photoErrors[e.key]
+          : e instanceof Error
+            ? e.message
+            : t.account.avatarFailed,
+      );
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+  const removeAvatar = async () => {
+    if (avatarBusy) return;
+    setAvatarBusy(true);
+    setMessage('');
+    setError('');
+    try {
+      await saveAvatar(null);
+      setMessage(t.account.avatarRemoved);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.account.avatarFailed);
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
   return (
     <section className="panel account-section" aria-label={t.account.usernameTitle}>
       <div className="section-heading">
@@ -110,7 +172,55 @@ export function UsernameSettings() {
           {t.account.usernameTitle}
         </h2>
       </div>
-      <p className="subdued">{saved === null ? t.account.usernameNone : t.account.usernameHint}</p>
+      <div className="avatar-setting">
+        <button
+          type="button"
+          className="avatar-setting-photo"
+          aria-label={avatar ? t.account.avatarChange : t.account.avatarAdd}
+          disabled={!saved || avatarBusy}
+          onClick={() => picker.current?.click()}
+        >
+          <Avatar name={saved || null} avatar={avatar} size="lg" round />
+          <span className="avatar-setting-badge" aria-hidden>
+            {avatarBusy ? <LoaderCircle size={14} className="loading-icon" /> : <Camera size={14} />}
+          </span>
+        </button>
+        <div className="avatar-setting-text">
+          <strong>{t.account.avatarTitle}</strong>
+          <span>{saved ? t.account.avatarHint : t.account.avatarNeedUsername}</span>
+          <div className="avatar-setting-actions">
+            <button
+              type="button"
+              className="secondary small-btn"
+              disabled={!saved || avatarBusy}
+              onClick={() => picker.current?.click()}
+            >
+              {avatar ? t.account.avatarChange : t.account.avatarAdd}
+            </button>
+            {avatar && (
+              <button
+                type="button"
+                className="ghost-btn small-btn"
+                disabled={avatarBusy}
+                onClick={removeAvatar}
+              >
+                {t.account.avatarRemove}
+              </button>
+            )}
+          </div>
+        </div>
+        <input
+          ref={picker}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            pickAvatar(e.target.files);
+            e.target.value = '';
+          }}
+        />
+      </div>
+      <p className="subdued mt-24">{saved === null ? t.account.usernameNone : t.account.usernameHint}</p>
       <form className="name-form mt-24" onSubmit={save}>
         <label className="field">
           <span>{t.account.usernameLabel}</span>

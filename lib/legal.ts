@@ -53,7 +53,7 @@ const fr: Record<LegalKind, LegalDoc> = {
   },
   privacy: {
     title: 'Politique de confidentialité',
-    updated: '7 octobre 2026',
+    updated: '10 octobre 2026',
     intro:
       'Afterwatch collecte le minimum nécessaire pour faire fonctionner ton compte. Pas de publicité, pas de revente de données, pas de traceurs publicitaires.',
     sections: [
@@ -70,6 +70,7 @@ const fr: Record<LegalKind, LegalDoc> = {
             list: [
               'Compte : adresse e-mail, mot de passe (enregistré sous forme chiffrée par Supabase, jamais lisible), nom affiché, pseudo public. Avec Google : ton nom et ton e-mail Google.',
               'Ta liste et ton planning : titres, progression, priorités, notes personnelles, séances et réglages (temps par jour, fuseau horaire).',
+              'Communauté : ta photo de profil, tes publications (textes, #tags, photos et vidéos), tes notes et tes réactions. Les photos sont réduites dans ton navigateur, ce qui retire leur position GPS ; les vidéos sont limitées à 2 minutes et 100 Mo. Ce que tu publies est visible par les membres connectés.',
               'Notifications : tes choix, l’adresse technique d’envoi fournie par ton navigateur si tu actives le téléphone, et l’historique des envois pour éviter les doublons.',
               'Assistant : tes messages et les informations utiles de ta liste sont envoyés à Google Gemini pour produire la réponse. Nous gardons seulement le nombre de messages par jour, pas leur contenu. La conversation reste dans ton navigateur.',
               'Données techniques : adresse IP, date et erreurs, conservées par l’hébergeur pour la sécurité.',
@@ -112,7 +113,7 @@ const fr: Record<LegalKind, LegalDoc> = {
       {
         title: 'Combien de temps',
         body: [
-          'Tes données sont conservées tant que ton compte existe. Quand tu supprimes ton compte, ta liste, ton planning, tes préférences, tes appareils et ton pseudo sont effacés immédiatement. Des copies de sauvegarde peuvent subsister quelques jours avant d’être écrasées.',
+          'Tes données sont conservées tant que ton compte existe. Quand tu supprimes ton compte, ta liste, ton planning, tes préférences, tes appareils, ton pseudo, ta photo de profil, tes photos et tes vidéos sont effacés immédiatement. Des copies de sauvegarde peuvent subsister quelques jours avant d’être écrasées.',
         ],
       },
       {
@@ -151,7 +152,7 @@ const fr: Record<LegalKind, LegalDoc> = {
   },
   terms: {
     title: 'Conditions d’utilisation',
-    updated: '7 octobre 2026',
+    updated: '10 octobre 2026',
     intro:
       'Les règles pour utiliser Afterwatch. En créant un compte, tu les acceptes. Elles sont écrites pour être lues.',
     sections: [
@@ -174,22 +175,22 @@ const fr: Record<LegalKind, LegalDoc> = {
         ],
       },
       {
-        title: 'Ton pseudo',
+        title: 'Ton pseudo et ta photo de profil',
         body: [
-          'Ton pseudo est visible par les autres membres. Il ne doit pas imiter une autre personne ou Afterwatch, ni être insultant ou trompeur. Nous pouvons te demander de le changer, ou le retirer s’il ne respecte pas ces règles.',
+          'Ton pseudo et ta photo de profil sont visibles par les autres membres. Ils ne doivent pas imiter une autre personne ou Afterwatch, ni être insultants, choquants ou trompeurs. Nous pouvons te demander de les changer, ou les retirer s’ils ne respectent pas ces règles.',
         ],
       },
       {
         title: 'Règles de la communauté',
         body: [
-          'Ces règles s’appliquent à tout ce que tu publies : avis, notes, recommandations, commentaires et réactions.',
+          'Ces règles s’appliquent à tout ce que tu publies : avis, notes, recommandations, commentaires, photos, vidéos et réactions.',
           {
             list: [
               'Respecte les autres : pas de harcèlement, d’insultes, de menaces ni de propos haineux ou discriminatoires.',
               'Pas de contenu illégal, sexuel, violent ou choquant, ni de données personnelles d’autrui.',
               'Pas de publicité, de spam ni de liens vers du streaming ou du téléchargement illégal.',
               'Marque les spoilers comme tels.',
-              'Ne publie que ce que tu as le droit de partager.',
+              'Ne publie que ce que tu as le droit de partager : pas d’épisode, de chapitre ni de long extrait d’une œuvre. Une courte capture ou une vidéo de toi qui réagis, oui.',
             ],
           },
           'Tu restes propriétaire de ce que tu publies. Tu autorises Afterwatch à l’afficher gratuitement sur le service tant qu’il est publié. Tu es responsable de tes publications.',
@@ -282,7 +283,7 @@ const en: Record<LegalKind, LegalDoc> = {
   },
   privacy: {
     title: 'Privacy policy',
-    updated: 'October 7, 2026',
+    updated: 'October 10, 2026',
     intro:
       'Afterwatch collects the minimum needed to run your account. No ads, no selling of data, no advertising trackers.',
     sections: [
@@ -299,6 +300,7 @@ const en: Record<LegalKind, LegalDoc> = {
             list: [
               'Account: e-mail address, password (stored encrypted by Supabase, never readable), display name, public username. With Google: your Google name and e-mail.',
               'Your list and schedule: titles, progress, priorities, personal notes, sessions and settings (time per day, time zone).',
+              'Community: your profile photo, your posts (text, #tags, photos and videos), your scores and reactions. Photos are resized in your browser, which removes their GPS location; videos are limited to 2 minutes and 100 MB. What you post is visible to signed-in members.',
               'Notifications: your choices, the technical delivery address your browser provides if you turn on phone notifications, and the delivery history used to avoid duplicates.',
               'Assistant: your messages and the relevant parts of your list are sent to Google Gemini to produce the answer. We only keep the number of messages per day, not their content. The conversation stays in your browser.',
               'Technical data: IP address, date and errors, kept by the host for security.',
@@ -341,7 +343,7 @@ const en: Record<LegalKind, LegalDoc> = {
       {
         title: 'How long',
         body: [
-          'Your data is kept as long as your account exists. When you delete your account, your list, schedule, preferences, devices and username are erased immediately. Backup copies may remain for a few days before being overwritten.',
+          'Your data is kept as long as your account exists. When you delete your account, your list, schedule, preferences, devices, username, profile photo, photos and videos are erased immediately. Backup copies may remain for a few days before being overwritten.',
         ],
       },
       {
@@ -380,7 +382,7 @@ const en: Record<LegalKind, LegalDoc> = {
   },
   terms: {
     title: 'Terms of use',
-    updated: 'October 7, 2026',
+    updated: 'October 10, 2026',
     intro:
       'The rules for using Afterwatch. By creating an account, you accept them. They’re written to be read.',
     sections: [
@@ -403,22 +405,22 @@ const en: Record<LegalKind, LegalDoc> = {
         ],
       },
       {
-        title: 'Your username',
+        title: 'Your username and profile photo',
         body: [
-          'Your username is visible to other members. It must not impersonate someone else or Afterwatch, nor be insulting or misleading. We may ask you to change it, or remove it if it breaks these rules.',
+          'Your username and profile photo are visible to other members. They must not impersonate someone else or Afterwatch, nor be insulting, shocking or misleading. We may ask you to change them, or remove them if they break these rules.',
         ],
       },
       {
         title: 'Community rules',
         body: [
-          'These rules apply to everything you post: reviews, ratings, recommendations, comments and reactions.',
+          'These rules apply to everything you post: reviews, ratings, recommendations, comments, photos, videos and reactions.',
           {
             list: [
               'Respect others: no harassment, insults, threats, hateful or discriminatory content.',
               'No illegal, sexual, violent or shocking content, and no one else’s personal data.',
               'No ads, spam or links to illegal streaming or downloads.',
               'Mark spoilers as spoilers.',
-              'Only post what you have the right to share.',
+              'Only post what you have the right to share: no episodes, chapters or long clips of a work. A short screenshot or a video of you reacting is fine.',
             ],
           },
           'You keep ownership of what you post. You allow Afterwatch to display it on the service, free of charge, for as long as it is posted. You are responsible for your posts.',

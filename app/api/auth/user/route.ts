@@ -20,7 +20,13 @@ export async function GET(request: Request) {
   const providers = getEnabledProviders(config);
 
   try {
-    const [{ user }, { google: googleEnabled }] = await Promise.all([requireUser(lang), providers]);
+    const [{ supabase, user }, { google: googleEnabled }] = await Promise.all([requireUser(lang), providers]);
+    // The community profile photo, when the member has one; the menu shows initials otherwise.
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('avatar_path')
+      .eq('user_id', user.id)
+      .maybeSingle();
     const metadata = user.user_metadata;
     // display_name is the one the member chose in Afterwatch; provider names (Google…) come after.
     const name = [
@@ -38,6 +44,7 @@ export async function GET(request: Request) {
           id: user.id,
           email: user.email || null,
           displayName: name || cleanDisplayName(user.email?.split('@')[0]) || t.memberFallback,
+          avatar: (profile?.avatar_path as string | undefined) ?? null,
           telegramLinked: Boolean(
             telegramProvider && user.identities?.some((identity) => identity.provider === telegramProvider),
           ),

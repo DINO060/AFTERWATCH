@@ -22,13 +22,14 @@ import {
   viewerSeen,
   type FeedItem,
   type Photo,
+  type Video,
   type Reaction,
   type TargetRef,
 } from '@/lib/community';
 import type { Media } from '@/lib/watch';
 import { Avatar, Loading, Poster, ReportDialog, Switch, api, post, problem } from './community-ui';
 import { useI18n } from './i18n-provider';
-import { PhotoGrid, PostRow, RichText, SpoilerCover } from './post-ui';
+import { PhotoGrid, PostRow, RichText, SpoilerCover, VideoPlayer } from './post-ui';
 import ComposeSheet from './compose-sheet';
 
 type Kind = TargetRef['kind'];
@@ -42,7 +43,8 @@ type Activity = WorkKey & {
 };
 type Trend = { tag: string; posts: number; members: number };
 type Pick4 = { ref: TargetRef; title: string; image: string; item?: CatalogItem };
-type Revealed = Record<string, { body: string; photos: Photo[] }>;
+type Shown = { body: string; photos: Photo[]; video?: Video | null };
+type Revealed = Record<string, Shown>;
 const FRESH = 48 * 3600 * 1000;
 const FILTERS: (Kind | null)[] = [null, 'anime', 'series', 'film', 'manga'];
 const keyOf = (r: WorkKey) => `${r.kind}:${r.source}:${r.sourceId}`;
@@ -105,6 +107,7 @@ export default function CommunityView({
   const [toReport, setToReport] = useState<string | null>(null);
   const [trends, setTrends] = useState<Trend[]>([]);
   const [username, setUsername] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
 
   const seenOf = (item: FeedItem) => viewerSeen(item.target, collection);
   // Spoilers the member has already seen are shown without asking.
@@ -153,8 +156,12 @@ export default function CommunityView({
     api<Trend[]>('/api/community?op=trending')
       .then((list) => live && setTrends(list))
       .catch(() => {});
-    api<{ username: string | null }>('/api/profile')
-      .then((data) => live && setUsername(data.username ?? null))
+    api<{ username: string | null; avatar: string | null }>('/api/profile')
+      .then((data) => {
+        if (!live) return;
+        setUsername(data.username ?? null);
+        setAvatar(data.avatar ?? null);
+      })
       .catch(() => {});
     return () => {
       live = false;
@@ -304,7 +311,7 @@ export default function CommunityView({
         </div>
 
         <button type="button" className="cv-compose" onClick={write}>
-          <Avatar name={username} round />
+          <Avatar name={username} avatar={avatar} round />
           <span className="cv-compose-text">{h.whatsNew}</span>
           <span className="cv-compose-tools" aria-hidden>
             <ImagePlus size={19} />
@@ -350,7 +357,9 @@ export default function CommunityView({
                 key={item.id}
                 item={item}
                 shown={
-                  item.body !== null ? { body: item.body, photos: item.photos } : (revealed[item.id] ?? null)
+                  item.body !== null
+                    ? { body: item.body, photos: item.photos, video: item.video }
+                    : (revealed[item.id] ?? null)
                 }
                 seen={seenOf(item)}
                 inList={inCollection(item.target, collection)}
@@ -452,7 +461,7 @@ function FeedPost({
   onReport,
 }: {
   item: FeedItem;
-  shown: { body: string; photos: Photo[] } | null;
+  shown: Shown | null;
   seen: boolean | null;
   inList: boolean;
   adding: boolean;
@@ -555,6 +564,7 @@ function FeedPost({
                 : h.maybeNotSeen
           }
           photoCount={item.photoCount}
+          hasVideo={item.hasVideo}
           backdrop={target.backdrop || target.poster}
           busy={revealing}
           onShow={onReveal}
@@ -564,6 +574,7 @@ function FeedPost({
           {item.spoiler !== 'none' && <span className="dx-spoiler-tag">{h.spoilerTag}</span>}
           {shown.body && <RichText text={shown.body} onTag={onTag} />}
           <PhotoGrid photos={shown.photos} />
+          {shown.video && <VideoPlayer video={shown.video} />}
         </>
       )}
       {embed}

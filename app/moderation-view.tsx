@@ -1,18 +1,21 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Ban, Check, LoaderCircle, ShieldCheck, Trash2 } from 'lucide-react';
+import { Ban, Check, LoaderCircle, ShieldCheck, Trash2, UserX } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Photo, Spoiler, TargetRef } from '@/lib/community';
+import type { Photo, Spoiler, TargetRef, Video } from '@/lib/community';
 import { useI18n } from './i18n-provider';
-import { PhotoGrid } from './post-ui';
+import { Avatar } from './community-ui';
+import { PhotoGrid, VideoPlayer } from './post-ui';
 
 type Item = {
   commentId: string;
   body: string;
   photos?: Photo[];
+  video?: Video | null;
   spoiler: Spoiler;
   createdAt: string;
   author: string | null;
+  authorAvatar?: string | null;
   authorBanned: boolean;
   target: {
     kind: TargetRef['kind'];
@@ -66,6 +69,27 @@ export default function ModerationView({ onOpen }: { onOpen: (ref: TargetRef) =>
       if (!r.ok) throw new Error(data.error || c.actionFailed);
       setQueue((q) => (q ? q.filter((x) => x.commentId !== item.commentId) : q));
       toast.success(c.moderationDone);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : c.actionFailed);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // A shocking profile photo: removed from the author's profile, the post itself stays.
+  const removeAvatar = async (item: Item) => {
+    if (busy) return;
+    setBusy(item.commentId);
+    try {
+      const r = await fetch('/api/community', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'removeAvatar', comment: item.commentId }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || c.actionFailed);
+      setQueue((q) => q && q.map((x) => (x.author === item.author ? { ...x, authorAvatar: null } : x)));
+      toast.success(c.avatarRemovedByModeration);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : c.actionFailed);
     } finally {
@@ -147,6 +171,7 @@ export default function ModerationView({ onOpen }: { onOpen: (ref: TargetRef) =>
                 )}
                 <p className="dx-body">{item.body || (item.photos?.length ? '' : c.deleted)}</p>
                 <PhotoGrid photos={item.photos ?? []} />
+                {item.video && <VideoPlayer video={item.video} />}
                 {item.details.length > 0 && (
                   <ul className="dx-case-details">
                     {item.details.map((d, i) => (
@@ -178,6 +203,17 @@ export default function ModerationView({ onOpen }: { onOpen: (ref: TargetRef) =>
                   >
                     {c.moderationDismiss}
                   </button>
+                  {item.authorAvatar && (
+                    <button
+                      className="secondary"
+                      disabled={busy === item.commentId}
+                      onClick={() => removeAvatar(item)}
+                    >
+                      <Avatar name={item.author} avatar={item.authorAvatar} size="sm" round />
+                      <UserX size={16} />
+                      {c.moderationRemoveAvatar}
+                    </button>
+                  )}
                   <button className="dx-link" onClick={() => onOpen(ref)}>
                     {c.viewDiscussion}
                   </button>

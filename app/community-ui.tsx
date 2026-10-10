@@ -4,8 +4,11 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { Check, EyeOff, Flag, LoaderCircle, Tv } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { usernameHue, type TargetRef } from '@/lib/community';
+import { AVATAR_BUCKET, photoUrl, usernameHue, type TargetRef } from '@/lib/community';
+import { getSupabaseConfig } from '@/lib/supabase/config';
 import { useI18n } from './i18n-provider';
+
+export const avatarSrc = (path: string) => photoUrl(getSupabaseConfig()?.url ?? '', path, AVATAR_BUCKET);
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { cache: 'no-store', ...init });
@@ -63,18 +66,34 @@ export function Poster({ src, className }: { src: string; className: string }) {
   );
 }
 
+/** A member's profile photo, or the first letter of their username on a colour of its own. */
 export function Avatar({
   name,
+  avatar,
   size = 'md',
   round,
 }: {
   name: string | null;
-  size?: 'sm' | 'md';
+  avatar?: string | null;
+  size?: 'sm' | 'md' | 'lg';
   round?: boolean;
 }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  const className = `dx-avatar ${size}${round ? ' round' : ''}`;
+  if (avatar && broken !== avatar)
+    return (
+      <img
+        className={`${className} photo`}
+        src={avatarSrc(avatar)}
+        alt=""
+        aria-hidden
+        loading="lazy"
+        onError={() => setBroken(avatar)}
+      />
+    );
   return (
     <span
-      className={`dx-avatar ${size}${round ? ' round' : ''}`}
+      className={className}
       aria-hidden
       style={{ background: name ? `hsl(${usernameHue(name)} 38% 34%)` : 'var(--secondary)' }}
     >
