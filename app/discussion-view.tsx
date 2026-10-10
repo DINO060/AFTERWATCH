@@ -412,7 +412,12 @@ export default function DiscussionView({
     const el = field.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+    // The field's height counts its border: without it the text overflows by 2px and Windows
+    // shows scroll arrows. A scrollbar only once the text is taller than the 150px cap.
+    const border = el.offsetHeight - el.clientHeight;
+    const needed = el.scrollHeight + border;
+    el.style.height = `${Math.min(needed, 150)}px`;
+    el.style.overflowY = needed > 150 ? 'auto' : 'hidden';
   };
 
   const published = (d: Debrief, mode: Draft['mode'], parent?: Debrief) => {

@@ -3860,6 +3860,7 @@ h1 {
   height: 42px;
   min-height: 42px;
   max-height: 150px;
+  overflow-y: hidden;
   padding: 10px 14px;
   border: 1px solid var(--input);
   border-radius: 21px;
