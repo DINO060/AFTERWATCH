@@ -161,10 +161,13 @@ export function AuthPanel({
   const [busy, setBusy] = useState<Busy | null>(null);
   const [message, setMessage] = useState<AuthText | ''>('');
   const [error, setError] = useState<AuthText | ''>('');
-  // The anti-robot check's token, used once per attempt (null while it is coming).
+  // The anti-robot check runs in the background while the form is filled in (it can take ~10 s).
+  // Its token is used once per attempt; a click before it is ready waits for it.
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaBroken, setCaptchaBroken] = useState(false);
+  const captchaRef = useRef<string | null>(null);
+  const captchaWaiters = useRef<((token: string) => void)[]>([]);
   const knownUserId = useRef(user?.id || null);
   const authChange = useRef(onAuthChange);
 
@@ -226,14 +229,33 @@ export function AuthPanel({
     } finally {
       setBusy(null);
       if (captchaEnabled && (kind === 'login' || kind === 'signup' || kind === 'reset' || kind === 'magic')) {
+        captchaRef.current = null;
         setCaptcha(null);
         setCaptchaNonce((n) => n + 1);
       }
     }
   }
-  const token = captcha ?? undefined;
-  // Waiting for the anti-robot check (usually a second, without anything to do).
-  const checking = captchaEnabled && !captcha;
+  const takeCaptcha = (value: string | null) => {
+    captchaRef.current = value;
+    setCaptcha(value);
+    if (!value) return;
+    setCaptchaBroken(false);
+    for (const resolve of captchaWaiters.current.splice(0)) resolve(value);
+  };
+  /** The check's token; waits up to 30 s for it. Undefined when the check is off or never answers. */
+  const captchaToken = (): Promise<string | undefined> => {
+    if (!captchaEnabled) return Promise.resolve(undefined);
+    if (captchaRef.current) return Promise.resolve(captchaRef.current);
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => resolve(undefined), 30000);
+      captchaWaiters.current.push((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      });
+    });
+  };
+  // Shown only when someone pressed a button before the check finished.
+  const checking = captchaEnabled && !captcha && busy !== null;
   const checkNewPassword = (value: string) => {
     const problem = passwordProblem(value);
     if (problem) throw new RangeError(problem);
@@ -241,7 +263,7 @@ export function AuthPanel({
 
   const logIn = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    run('login', () => logInWithPassword(email, password, token), 'sendFailed');
+    run('login', async () => logInWithPassword(email, password, await captchaToken()), 'sendFailed');
   };
   const signUp = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -249,7 +271,7 @@ export function AuthPanel({
       'signup',
       async () => {
         checkNewPassword(password);
-        await signUpWithPassword(email, password, signupName, token);
+        await signUpWithPassword(email, password, signupName, await captchaToken());
         setPasswordValue('');
       },
       'sendFailed',
@@ -258,7 +280,7 @@ export function AuthPanel({
   };
   const resetPassword = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    run('reset', () => sendPasswordReset(email, token), 'sendFailed', 'resetSent');
+    run('reset', async () => sendPasswordReset(email, await captchaToken()), 'sendFailed', 'resetSent');
   };
   const sendMagicLink = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -267,6 +289,7 @@ export function AuthPanel({
       async () => {
         const supabase = createSupabaseBrowserClient();
         if (!supabase) throw new Error('Sign-in unavailable');
+        const token = await captchaToken();
         const { error: authError } = await supabase.auth.signInWithOtp({
           email: email.trim(),
           options: {
@@ -420,25 +443,19 @@ export function AuthPanel({
   // The anti-robot check sits just above the form's button (empty unless Cloudflare needs a click),
   // its status just below.
   const captchaBox = (
-    <CaptchaBox
-      nonce={captchaNonce}
-      onToken={(value) => {
-        setCaptcha(value);
-        if (value) setCaptchaBroken(false);
-      }}
-      onFail={() => setCaptchaBroken(true)}
-    />
+    <CaptchaBox nonce={captchaNonce} onToken={takeCaptcha} onFail={() => setCaptchaBroken(true)} />
   );
-  const captchaNote = !checking ? null : captchaBroken ? (
-    <p className="notice danger" role="alert">
-      {t.auth.captchaFailed}
-    </p>
-  ) : (
-    <p className="form-hint captcha-hint" role="status">
-      <LoaderCircle className="loading-icon" size={14} />
-      {t.auth.captchaChecking}
-    </p>
-  );
+  const captchaNote =
+    captchaBroken && !captcha ? (
+      <p className="notice danger" role="alert">
+        {t.auth.captchaFailed}
+      </p>
+    ) : !checking ? null : (
+      <p className="form-hint captcha-hint" role="status">
+        <LoaderCircle className="loading-icon" size={14} />
+        {t.auth.captchaChecking}
+      </p>
+    );
 
   return (
     <section className="panel auth-panel" aria-label={t.auth.panelAria}>
@@ -534,7 +551,7 @@ export function AuthPanel({
           <form className="auth-form mt-24" onSubmit={resetPassword}>
             {emailField}
             {captchaBox}
-            <button className="primary" type="submit" disabled={Boolean(busy) || checking}>
+            <button className="primary" type="submit" disabled={Boolean(busy)}>
               {spinner('reset', <Mail size={16} />)}
               {t.auth.sendReset}
             </button>
@@ -591,7 +608,7 @@ export function AuthPanel({
                   hint={t.auth.passwordHint}
                 />
                 {captchaBox}
-                <button className="primary" type="submit" disabled={Boolean(busy) || checking}>
+                <button className="primary" type="submit" disabled={Boolean(busy)}>
                   {spinner('signup', <UserPlus size={16} />)}
                   {t.auth.signupButton}
                 </button>
@@ -612,7 +629,7 @@ export function AuthPanel({
               <form className="auth-form" onSubmit={sendMagicLink}>
                 {emailField}
                 {captchaBox}
-                <button className="primary" type="submit" disabled={Boolean(busy) || checking}>
+                <button className="primary" type="submit" disabled={Boolean(busy)}>
                   {spinner('magic', <Mail size={16} />)}
                   {t.auth.sendLink}
                 </button>
@@ -633,7 +650,7 @@ export function AuthPanel({
                   disabled={Boolean(busy)}
                 />
                 {captchaBox}
-                <button className="primary" type="submit" disabled={Boolean(busy) || checking}>
+                <button className="primary" type="submit" disabled={Boolean(busy)}>
                   {spinner('login', <KeyRound size={16} />)}
                   {t.auth.loginButton}
                 </button>
